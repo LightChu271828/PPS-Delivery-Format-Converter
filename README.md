@@ -6,8 +6,6 @@ uploaded to a server.
 
 **Live:** https://lightchu271828.github.io/ky-pps-delivery/
 
-Same shape as [must-go jackpot designer](https://lightchu271828.github.io/mustgo-jackpot-designer/).
-
 ## What it writes
 
 - `Delivery`
@@ -28,7 +26,7 @@ Jackpot type is read from the filename and Win Methods, and shown with that exac
 | Daily Streak | No jackpot data, Daily Streak in the filename / labels | No-JP grid including $3 |
 | No jackpot | Blank Progressive Jackpots | Default 8-price grid |
 
-Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, pick the type in the dropdown.
+Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, the build stops until the filename names the type.
 
 ## What you need in the file
 

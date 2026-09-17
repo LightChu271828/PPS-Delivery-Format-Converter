@@ -27,6 +27,14 @@ assert(findJackpotType("Something(MMJ)_PPS") === "MMJ", "MMJ not MMJ3");
 assert(findJackpotType("Game(ChatterJP)") === "ChatterJP", "ChatterJP casing");
 assert(findJackpotType("ssj") === "SSJ", "detect is case-insensitive, id is SSJ");
 assert(findJackpotType("mmj3") === "MMJ3", "mmj3 -> MMJ3");
+assert(
+  detectSchema({
+    identity: "PremiumGold(SSJ) Standard",
+    filename: "260707_KY_test(MMJ)_PPS_083_004.xlsx",
+    jpEntries: [{ row: 11 }],
+  }) === "MMJ",
+  "filename MMJ beats leftover SSJ labels",
+);
 assert(detectSchema({ filename: "DailyStreakBooster", jpEntries: [] }) === "Daily Streak");
 assert(detectSchema({ filename: "America250", jpEntries: [] }) === "No jackpot");
 try {

@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-3";
 
 const $ = (id) => document.getElementById(id);
 
@@ -141,8 +141,6 @@ async function build() {
   try {
     const { buffer, report } = await buildPps(state.buffer, state.file.name, {
       templates: state.templates,
-      schema: $("schema").value,
-      allowNonKentucky: $("allowNonKy").checked,
     });
     state.output = buffer;
     state.outputName = outputFilename(state.file.name);
@@ -175,8 +173,6 @@ function download() {
 
 function reset() {
   $("file").value = "";
-  $("schema").value = "auto";
-  $("allowNonKy").checked = false;
   setFile(null);
   toast("Reset");
 }

@@ -159,6 +159,18 @@ function copyColumnWidths(srcWs, dstWs, maxCol) {
   }
 }
 
+function revealColumns(ws, maxCol, minWidth = 12) {
+  for (let col = 1; col <= maxCol; col += 1) {
+    const column = ws.getColumn(col);
+    column.hidden = false;
+    if (!column.width || column.width < minWidth) column.width = col === 1 ? 16 : minWidth;
+  }
+}
+
+function pairedPriceCols(grid) {
+  return grid.map((_, idx) => 2 + idx * 2);
+}
+
 function copySheetChrome(srcWs, dstWs) {
   if (srcWs.properties) dstWs.properties = { ...dstWs.properties, ...clone(srcWs.properties) };
   if (srcWs.pageSetup) dstWs.pageSetup = { ...srcWs.pageSetup };
@@ -387,15 +399,15 @@ function rowDollarPrize(row, base) {
 }
 
 export function detectSchema({ identity, filename, winMethods, jpEntries }) {
-  const corpus = `${identity || ""} ${filename || ""} ${sheetCorpus(winMethods)}`;
-  const jpType = findJackpotType(corpus);
+  const jpType = findJackpotType(filename) || findJackpotType(sheetCorpus(winMethods));
   if (!jpEntries.length) {
+    const corpus = `${identity || ""} ${filename || ""}`;
     if (/daily\s*streak|dailystreak/i.test(corpus)) return "Daily Streak";
     return "No jackpot";
   }
   if (jpType) return jpType;
   throw new Error(
-    "Jackpot data is present but MMJ, MMJ3, SSJ, or ChatterJP was not found in the filename or Win Methods. Pick the type in the dropdown.",
+    "Jackpot data is present but MMJ, MMJ3, SSJ, or ChatterJP was not found in the filename or Win Methods.",
   );
 }
 
@@ -757,49 +769,19 @@ function reflowOddsJp(ws, templateWs, jpCount, firstPrizeRow, nonwinRow, maxCol)
   copyRowStyle(templateWs, ws, findOddsTemplateNonwin(templateWs), nonwinRow, 1, maxCol);
 }
 
-function buildOddsSsj(ws, templateWs, rows, delivery, ctx) {
-  const prizes = groupPrizes(rows, "prize");
-  const lastWin = delivery.lastWinRow;
-  copySheetChrome(templateWs, ws);
-  ws.getColumn(1).width = templateWs.getColumn(1).width || 14;
-  ws.getColumn(2).width = 16;
-  ws.getColumn(3).width = 16;
-  setValue(ws, "A1", "Ticket Price");
-  setValue(ws, "B1", ctx.base).numFmt = "0.##";
-  setValue(ws, "C1", "1 in X Odds ");
-  ctx.ssj.oddsOrder.forEach((jp, offset) => {
-    const row = 2 + offset;
-    setValue(ws, `A${row}`, jp.label);
-    setValue(ws, `B${row}`, currencyStar(jp.prize));
-    setValue(ws, `C${row}`, `='Progressive Jackpots'!$H$${jp.row}`);
-  });
-  const firstRow = 4;
-  prizes.forEach((prize, offset) => {
-    const row = firstRow + offset;
-    if (offset === 0) setValue(ws, `A${row}`, "Prize");
-    setValue(ws, `B${row}`, prize);
-    setValue(ws, `C${row}`, `='Delivery'!$M$6/SUMIF('Delivery'!$E$4:$E$${lastWin},B${row},'Delivery'!$F$4:$F$${lastWin})`);
-  });
-  const nonwinRow = firstRow + prizes.length;
-  setValue(ws, `B${nonwinRow}`, "NON WINNING");
-  setValue(ws, `C${nonwinRow}`, `='Delivery'!$M$6/'Delivery'!$F$${delivery.nonwinRow}`);
-  reflowOddsJp(ws, templateWs, 2, firstRow, nonwinRow, 3);
-  for (let row = 1; row <= nonwinRow; row += 1) {
-    ws.getCell(row, 2).numFmt = "#,##0.00";
-    ws.getCell(row, 3).numFmt = "#,##0.00";
-  }
-  return { nonwinRow, uniquePrizes: prizes.length };
-}
-
 function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
   const prizes = groupPrizes(rows, "factor");
   const grid = ctx.priceGrid;
+  const priceCols = pairedPriceCols(grid);
+  const extraPriceCols = priceCols.filter((col) => col > 4);
+  const maxCol = priceCols[priceCols.length - 1] + 1;
   const jpList = ctx.ssj?.oddsOrder || ctx.jpEntries;
   copySheetChrome(templateWs, ws);
-  copyColumnWidths(templateWs, ws, 17);
+  copyColumnWidths(templateWs, ws, maxCol);
+  revealColumns(ws, maxCol);
   setValue(ws, "A1", "Ticket Price");
   grid.forEach((price, idx) => {
-    const priceCol = 2 + idx * 2;
+    const priceCol = priceCols[idx];
     setValue(ws, { row: 1, col: priceCol }, price);
     setValue(ws, { row: 1, col: priceCol + 1 }, "1 in X Odds ");
   });
@@ -810,12 +792,12 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
     setValue(ws, `D${row}`, currencyStar(jp.prize));
     setValue(ws, `E${row}`, `='Progressive Jackpots'!$H$${jp.row}`);
     setValue(ws, `C${row}`, `=E${row}*($D$1/$B$1)`);
-    for (const priceCol of [6, 8, 10, 12, 14, 16]) {
+    extraPriceCols.forEach((priceCol) => {
       const p = colLetter(priceCol);
       const o = colLetter(priceCol + 1);
       setValue(ws, `${p}${row}`, cellResult(ws.getCell(`D${row}`)) ?? ws.getCell(`D${row}`).value);
       setValue(ws, `${o}${row}`, `=E${row}/${p}$1`);
-    }
+    });
   });
   const firstRow = 2 + jpList.length;
   const lastWin = delivery.lastWinRow;
@@ -826,23 +808,23 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
     setValue(ws, `E${row}`, `='Delivery'!$M$6/SUMIF('Delivery'!$D$4:$D$${lastWin},D${row},'Delivery'!$F$4:$F$${lastWin})`);
     setValue(ws, `B${row}`, `=D${row}*$B$1`);
     setValue(ws, `C${row}`, `=E${row}`);
-    for (const priceCol of [6, 8, 10, 12, 14, 16]) {
+    extraPriceCols.forEach((priceCol) => {
       const p = colLetter(priceCol);
       const o = colLetter(priceCol + 1);
       setValue(ws, `${p}${row}`, `=D${row}*${p}$1`);
       setValue(ws, `${o}${row}`, `=E${row}`);
-    }
+    });
   });
   const nonwinRow = firstRow + prizes.length;
-  for (const priceCol of [2, 4, 6, 8, 10, 12, 14, 16]) {
+  priceCols.forEach((priceCol) => {
     const p = colLetter(priceCol);
     const o = colLetter(priceCol + 1);
     setValue(ws, `${p}${nonwinRow}`, "NON WINNING");
     setValue(ws, `${o}${nonwinRow}`, priceCol === 4 ? `='Delivery'!$M$6/'Delivery'!$F$${delivery.nonwinRow}` : `=E${nonwinRow}`);
-  }
-  reflowOddsJp(ws, templateWs, jpList.length, firstRow, nonwinRow, 17);
+  });
+  reflowOddsJp(ws, templateWs, jpList.length, firstRow, nonwinRow, maxCol);
   for (let row = 1; row <= nonwinRow; row += 1) {
-    for (let col = 2; col <= 17; col += 1) ws.getCell(row, col).numFmt = "#,##0.00";
+    for (let col = 2; col <= maxCol; col += 1) ws.getCell(row, col).numFmt = "#,##0.00";
   }
   return { nonwinRow, uniquePrizes: prizes.length };
 }
@@ -857,6 +839,7 @@ function buildOddsNoJp(ws, templateWs, rows, delivery, ctx) {
   const lastWin = delivery.lastWinRow;
   copySheetChrome(templateWs, ws);
   copyColumnWidths(templateWs, ws, oddsCol);
+  revealColumns(ws, oddsCol);
   setValue(ws, "A1", "Ticket Price");
   grid.forEach((price, idx) => setValue(ws, { row: 1, col: idx + 2 }, price));
   setValue(ws, { row: 1, col: oddsCol }, "1 in X Odds ");
@@ -882,53 +865,6 @@ function buildOddsNoJp(ws, templateWs, rows, delivery, ctx) {
   return { nonwinRow, uniquePrizes: prizes.length };
 }
 
-function buildSummarySsj(ws, templateWs, ctx, delivery) {
-  copySheetChrome(templateWs, ws);
-  copyColumnWidths(templateWs, ws, 2);
-  const maxRow = Math.min(templateWs.rowCount || 28, 28);
-  for (let row = 1; row <= maxRow; row += 1) {
-    copyRowStyle(templateWs, ws, row, row, 1, 2);
-    setValue(ws, `A${row}`, cellResult(templateWs.getCell(row, 1)));
-  }
-  const dist = summaryDistribution(ctx.summary);
-  const jp1 = ctx.ssj.summaryJp1;
-  const jp2 = ctx.ssj.summaryJp2;
-  setValue(ws, "B1", ctx.base);
-  setValue(ws, "B2", ctx.topPrize);
-  setValue(ws, "B3", "v1");
-  setValue(ws, "B4", ctx.rtp);
-  setValue(ws, "B5", dist.breakeven);
-  setValue(ws, "B6", "='Delivery'!$M$15");
-  setValue(ws, "B7", "='Delivery'!$M$6");
-  setValue(ws, "B8", "x0 - x5");
-  setValue(ws, "B9", dist.low);
-  setValue(ws, "B10", "x5 - x20");
-  setValue(ws, "B11", dist.medium);
-  setValue(ws, "B12", "x20 - top");
-  setValue(ws, "B13", dist.high);
-  setValue(ws, "B14", "=B7*B4*B1");
-  setValue(ws, "B15", ctx.base);
-  setValue(ws, "B16", cleanFloat(cellResult(ctx.pj.getCell("C2"))));
-  setValue(ws, "B17", jp2.wins);
-  setValue(ws, "B18", jp1.wins);
-  setValue(ws, "B19", 1);
-  setValue(ws, "B20", 40);
-  setValue(ws, "B21", `='Progressive Jackpots'!$H$${jp1.row}`);
-  setValue(ws, "B22", `='Progressive Jackpots'!$H$${jp2.row}`);
-  setValue(ws, "B23", "=B16*B15");
-  setValue(ws, "B24", "='Progressive Jackpots'!$C$14");
-  setValue(ws, "B25", jp1.prize);
-  setValue(ws, "B26", jp2.prize);
-  setValue(ws, "B27", "='Progressive Jackpots'!$C$21");
-  setValue(ws, "B28", "=B27*B17");
-  ws.getCell("B4").numFmt = "0.00%";
-  ws.getCell("B5").numFmt = "0.00%";
-  ws.getCell("B9").numFmt = "0.00%";
-  ws.getCell("B11").numFmt = "0.00%";
-  ws.getCell("B13").numFmt = "0.00%";
-  return dist;
-}
-
 function buildSummaryGrid(ws, templateWs, ctx) {
   const grid = ctx.priceGrid;
   const hasJp = isJpSchema(ctx.schema);
@@ -938,6 +874,7 @@ function buildSummaryGrid(ws, templateWs, ctx) {
   const oddsCell = hasJp ? "$M$15" : "$M$13";
   copySheetChrome(templateWs, ws);
   copyColumnWidths(templateWs, ws, grid.length + 1);
+  revealColumns(ws, grid.length + 1);
   const labels = [
     "Size of Grid",
     "Top Prize",
@@ -1267,22 +1204,13 @@ export async function buildPps(buffer, filename, options = {}) {
   const freq = requireSheet(wb, "Frequency");
   const identity = identityText(freq);
   const kentucky = isKentucky(identity, filename);
-  if (!kentucky && !options.allowNonKentucky) {
-    throw new Error(
-      "Workbook labels / filename do not establish Kentucky identity. Tick 'This is a Kentucky PPS' only if that is intentional.",
-    );
-  }
   const pj = sheet(wb, "Progressive Jackpots");
   const jpEntries = progressiveJackpots(pj);
   const summary = sheet(wb, "Summary");
   const winMethods = requireSheet(wb, "Win Methods");
   const pay = requireSheet(wb, "Pay Table");
   const freePlays = sheet(wb, "Free Plays");
-  const requested = normalizeSchema(options.schema);
-  const schema =
-    requested && requested !== "auto"
-      ? requested
-      : detectSchema({ identity, filename, winMethods, jpEntries });
+  const schema = detectSchema({ identity, filename, winMethods, jpEntries });
   const quantity = freqNumber(freq, 6);
   const base = freqNumber(freq, 7);
   const rtp = freqNumber(freq, 10);

@@ -174,25 +174,6 @@
         </div>
         <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
 
-        <div class="controls">
-          <label class="field">
-            <span>Schema</span>
-            <select id="schema">
-              <option value="auto">Auto-detect</option>
-              <option value="SSJ">SSJ</option>
-              <option value="MMJ">MMJ</option>
-              <option value="MMJ3">MMJ3</option>
-              <option value="ChatterJP">ChatterJP</option>
-              <option value="No jackpot">No jackpot</option>
-              <option value="Daily Streak">Daily Streak Booster</option>
-            </select>
-          </label>
-        </div>
-        <label class="check">
-          <input type="checkbox" id="allowNonKy" />
-          This is a Kentucky PPS (override if the filename / labels are not obvious)
-        </label>
-
         <div class="rebuild">
           <button type="button" class="primary" id="buildBtn" disabled>Add four tabs</button>
           <button type="button" id="downloadBtn" disabled>Download workbook</button>
@@ -235,21 +216,13 @@
     <h2>What this does not do</h2>
     <p class="note">
       It does not retune Frequency, RTP, or jackpot math. Combined multi-price Delivery packs
-      are not inputs — upload the per-price PPS. Christmas / non-Kentucky workbooks are refused
-      unless you override. If ExcelJS cannot open a file, open it in Excel and Save As .xlsx first.
-      Native Excel formatting will be close to the KY templates, not a pixel-perfect clone of every
-      theme index.
-    </p>
-
-    <hr />
-    <p class="hint">
-      Same idea as
-      <a href="https://lightchu271828.github.io/mustgo-jackpot-designer/">must-go jackpot designer</a>:
-      static page, no server, file never leaves the browser.
+      are not inputs — upload the per-price PPS. If ExcelJS cannot open a file, open it in Excel
+      and Save As .xlsx first. Native Excel formatting will be close to the KY templates, not a
+      pixel-perfect clone of every theme index.
     </p>
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=20260917-3"></script>
 </body>
 </html>
