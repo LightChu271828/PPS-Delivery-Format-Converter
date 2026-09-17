@@ -605,7 +605,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     setValue(ws, `D${row}`, factor);
     setValue(ws, `E${row}`, `=D${row}*$M$7`);
     setValue(ws, `F${row}`, item.winners);
-    setValue(ws, `G${row}`, `=$M$6/F${row}`);
+    setValue(ws, `G${row}`, `=ROUND($M$6/F${row},2)`);
     setValue(ws, `H${row}`, `=F${row}*E${row}`);
     setValue(ws, `I${row}`, `=H${row}/$M$9`);
     setValue(ws, `J${row}`, `=H${row}/$M$8`);
@@ -626,7 +626,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
   setValue(ws, `D${nonwinRow}`, 0);
   setValue(ws, `E${nonwinRow}`, `=D${nonwinRow}*$M$7`);
   setValue(ws, `F${nonwinRow}`, hasJp ? `=$M$6-$M$14` : `=$M$6-$M$12`);
-  setValue(ws, `G${nonwinRow}`, `=$M$6/F${nonwinRow}`);
+  setValue(ws, `G${nonwinRow}`, `=ROUND($M$6/F${nonwinRow},2)`);
   setValue(ws, `H${nonwinRow}`, `=F${nonwinRow}*E${nonwinRow}`);
   setValue(ws, `I${nonwinRow}`, `=H${nonwinRow}/$M$9`);
   setValue(ws, `J${nonwinRow}`, `=H${nonwinRow}/$M$8`);
@@ -674,9 +674,10 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     setValue(ws, "L14", "Winning Tiers Freq");
     setValue(ws, "M14", `=SUM(F4:F${lastWinRow})`);
     setValue(ws, "L15", "Hit Rate:");
-    setValue(ws, "M15", "=M6/M14");
+    setValue(ws, "M15", "=ROUND(M6/M14,2)");
     ws.getCell("M12").numFmt = "0.00%";
     ws.getCell("M13").numFmt = "0.00%";
+    ws.getCell("M15").numFmt = "0.00";
     if (schema === "SSJ") {
       setValue(ws, "L17", CONFIDENTIAL);
       try {
@@ -697,8 +698,8 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     setValue(ws, "L12", "Winning Tiers Freq");
     setValue(ws, "M12", `=SUM(F4:F${lastWinRow})`);
     setValue(ws, "L13", "Hit Rate:");
-    setValue(ws, "M13", "=M6/M12");
-    ws.getCell("M13").numFmt = "#,##0.00";
+    setValue(ws, "M13", "=ROUND(M6/M12,2)");
+    ws.getCell("M13").numFmt = "0.00";
     const l16 = cellResult(templateWs.getCell("L16"));
     if (l16) setValue(ws, "L16", l16);
   }
@@ -933,7 +934,7 @@ function buildSummaryGrid(ws, templateWs, ctx) {
       const isBase = idx + 2 === baseCol;
       setValue(ws, `${col}16`, cleanFloat(cellResult(ctx.pj.getCell("C2"))));
       setValue(ws, `${col}17`, isBase ? jp1.wins : `=${baseLetter}$17*${col}$15`);
-      setValue(ws, `${col}18`, isBase ? 1 : `=${baseLetter}$18`);
+      setValue(ws, `${col}18`, `=${col}17/${col}15`);
       setValue(ws, `${col}19`, isBase ? jp1.odds : `=${baseLetter}$19/${col}$15`);
       setValue(ws, `${col}20`, `=${col}16*${col}15`);
       setValue(ws, `${col}21`, isBase ? "='Progressive Jackpots'!$C$14" : `=${baseLetter}$21`);
@@ -969,8 +970,8 @@ function buildSummaryGrid(ws, templateWs, ctx) {
     setValue(ws, `${col}16`, cleanFloat(cellResult(ctx.pj.getCell("C2"))));
     setValue(ws, `${col}17`, isBase ? jp1.wins : `=${baseLetter}$17*${col}$15`);
     setValue(ws, `${col}18`, isBase ? jp2.wins : `=${baseLetter}$18*${col}$15`);
-    setValue(ws, `${col}19`, isBase ? 1 : `=${baseLetter}$19`);
-    setValue(ws, `${col}20`, isBase ? 1 : `=${baseLetter}$20`);
+    setValue(ws, `${col}19`, `=${col}17/${col}15`);
+    setValue(ws, `${col}20`, `=${col}18/${col}15`);
     setValue(ws, `${col}21`, isBase ? jp1.odds : `=${baseLetter}$21/${col}$15`);
     setValue(ws, `${col}22`, isBase ? jp2.odds : `=${baseLetter}$22/${col}$15`);
     setValue(ws, `${col}23`, `=${col}16*${col}15`);
@@ -1074,7 +1075,7 @@ function buildPrizeBreakdown(ws, templateWs, ctx) {
         : 1;
     }
     copyRowStyle(templateWs, ws, 3, outRow, 2, 6);
-    setValue(ws, `B${outRow}`, cellResult(wm.getCell(winRow, 2)));
+    setValue(ws, `B${outRow}`, outRow - 2).numFmt = "0";
     setValue(ws, `C${outRow}`, method);
     applyMethodFill(ws.getCell(`C${outRow}`), method, ctx.fills);
     setValue(ws, `D${outRow}`, cleanFloat(prize)).numFmt = "#,##0.00";

@@ -108,7 +108,13 @@ await scroogeWb.xlsx.load(scroogeBuilt.buffer);
 const scroogeDelivery = scroogeWb.getWorksheet("Delivery");
 assert(scroogeDelivery.getCell("L17").value == null, `Delivery L17 should be empty, got ${scroogeDelivery.getCell("L17").value}`);
 assert(scroogeDelivery.getCell("L23").value == null, "Delivery hit-rate check should be gone");
+const hitRate = scroogeDelivery.getCell("M15").value;
+assert(hitRate?.formula === "ROUND(M6/M14,2)", `hit rate formula ${JSON.stringify(hitRate)}`);
 const scroogeSummary = scroogeWb.getWorksheet("Summary(Delivery)");
+const jp1Ratio = scroogeSummary.getCell("C19").value;
+const jp2Ratio = scroogeSummary.getCell("C20").value;
+assert(jp1Ratio?.formula === "C17/C15", `JP1 ratio ${JSON.stringify(jp1Ratio)}`);
+assert(jp2Ratio?.formula === "C18/C15", `JP2 ratio ${JSON.stringify(jp2Ratio)}`);
 const jpBorder = scroogeSummary.getCell("B15").border;
 assert(jpBorder?.top?.style || jpBorder?.bottom?.style || jpBorder?.left?.style, "Summary row 15 needs borders");
 assert(scroogeSummary.getCell("B28").border?.bottom?.style, "Summary row 28 needs a bottom border");
@@ -122,7 +128,9 @@ for (let row = 3; row <= 400; row += 1) {
   if (!freeplayRow && String(method).toLowerCase().startsWith("freeplay")) freeplayRow = row;
   if (bonusRow && freeplayRow) break;
 }
-assert(bonusRow, "missing Bonus prize-breakdown row");
+assert(scroogePb.getCell(3, 2).value === 1, `first tier ${scroogePb.getCell(3, 2).value}`);
+assert(scroogePb.getCell(4, 2).value === 2, `second tier ${scroogePb.getCell(4, 2).value}`);
+assert(scroogePb.getCell(bonusRow, 2).value === bonusRow - 2, `bonus tier id ${scroogePb.getCell(bonusRow, 2).value}`);
 assert(scroogePb.getCell(bonusRow, 5).value === "Bonus", `Bonus symbol ${scroogePb.getCell(bonusRow, 5).value}`);
 assert(scroogePb.getCell(bonusRow, 6).value === 3, `Bonus qty ${scroogePb.getCell(bonusRow, 6).value}`);
 assert(freeplayRow, "missing FreePlay prize-breakdown row");
