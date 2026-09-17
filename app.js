@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-7";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-8";
 
 const $ = (id) => document.getElementById(id);
 
@@ -79,7 +79,7 @@ async function inspectSelected() {
     state.inspect = await inspectPps(state.buffer, state.file.name);
     renderInspect(state.inspect);
     $("buildBtn").disabled = !state.templates;
-    $("statusHint").textContent = "Looks readable. Add the four tabs, then download.";
+    $("statusHint").textContent = "Looks readable. Add Delivery tabs, then download.";
   } catch (err) {
     $("inspectBlock").classList.remove("hidden");
     $("inspectBlock").hidden = false;
@@ -137,7 +137,7 @@ function renderResult(report) {
 async function build() {
   if (!state.buffer || !state.templates) return;
   $("buildBtn").disabled = true;
-  $("statusHint").textContent = "Building four tabs…";
+  $("statusHint").textContent = "Building Delivery tabs…";
   try {
     const { buffer, report } = await buildPps(state.buffer, state.file.name, {
       templates: state.templates,
@@ -147,7 +147,7 @@ async function build() {
     renderResult(report);
     $("downloadBtn").disabled = false;
     $("statusHint").textContent = `Ready: ${state.outputName}`;
-    toast("Four tabs added");
+    toast("Delivery tabs added");
   } catch (err) {
     $("resultBlock").classList.remove("hidden");
     $("resultBlock").hidden = false;

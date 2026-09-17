@@ -65,6 +65,36 @@
     button.primary:hover { filter: brightness(1.08); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+    .markets {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .markets > span {
+      font-size: 11px;
+      color: var(--text-faint);
+      margin-right: 4px;
+    }
+    .markets button {
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      padding: 3px 8px;
+      min-width: 40px;
+    }
+    .markets button.on {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .markets button.on:hover { filter: none; }
+    .markets button:disabled {
+      opacity: 0.42;
+      cursor: default;
+    }
+
     .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); }
     .panel-h {
       padding: 8px 13px; border-bottom: 1px solid var(--line); font-size: 12px;
@@ -167,6 +197,18 @@
         <span id="templateStatus" class="pill">Loading templates…</span>
       </div>
       <div class="panel-b">
+        <div class="markets" role="group" aria-label="Lottery">
+          <span>Lottery</span>
+          <button type="button" disabled title="Coming soon">VA</button>
+          <button type="button" disabled title="Coming soon">NC</button>
+          <button type="button" disabled title="Coming soon">PA</button>
+          <button type="button" disabled title="Coming soon">MI</button>
+          <button type="button" disabled title="Coming soon">GA</button>
+          <button type="button" class="on" aria-pressed="true">KY</button>
+          <button type="button" disabled title="Coming soon">ALC</button>
+          <button type="button" disabled title="Coming soon">BCLC</button>
+          <button type="button" disabled title="Coming soon">OLG</button>
+        </div>
         <div class="drop" id="drop" tabindex="0">
           <strong>Drop a PPS .xlsx here, or click to browse</strong>
           <span class="hint">Frequency must already be calculated and saved in Excel so method names and prizes are cached.</span>
@@ -175,7 +217,7 @@
         <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
 
         <div class="rebuild">
-          <button type="button" class="primary" id="buildBtn" disabled>Add four tabs</button>
+          <button type="button" class="primary" id="buildBtn" disabled>Add Delivery tabs</button>
           <button type="button" id="downloadBtn" disabled>Download workbook</button>
           <span class="hint" id="statusHint">Choose a PPS to inspect it before building.</span>
         </div>
@@ -223,6 +265,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20260917-7"></script>
+  <script type="module" src="app.js?v=20260917-8"></script>
 </body>
 </html>
