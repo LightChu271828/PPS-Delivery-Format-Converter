@@ -438,15 +438,20 @@ function sourceRows(freq) {
     });
   }
   rows.sort((a, b) => b.prize - a.prize || a.sourceRow - b.sourceRow);
-  if (!rows.length) throw new Error("No winning Frequency rows found.");
-  const seen = new Map();
-  for (const row of rows) seen.set(row.method, (seen.get(row.method) || 0) + 1);
-  const duplicateMethods = [...seen.entries()].filter(([, n]) => n > 1).map(([k]) => k);
-  if (rows.some((r) => r.winners <= 0)) {
-    throw new Error("Zero/negative winning frequencies need a deliberate odds policy before building.");
+  const negative = rows.filter((r) => r.winners < 0);
+  if (negative.length) {
+    throw new Error(
+      `Frequency has negative Odds up at row ${negative[0].sourceRow} (${negative[0].method}).`,
+    );
   }
-  rows.duplicateMethods = duplicateMethods;
-  return rows;
+  const zeroFrequency = rows.filter((r) => r.winners === 0).map((r) => r.method);
+  const winning = rows.filter((r) => r.winners > 0);
+  if (!winning.length) throw new Error("No winning Frequency rows found.");
+  const seen = new Map();
+  for (const row of winning) seen.set(row.method, (seen.get(row.method) || 0) + 1);
+  winning.duplicateMethods = [...seen.entries()].filter(([, n]) => n > 1).map(([k]) => k);
+  winning.zeroFrequency = zeroFrequency;
+  return winning;
 }
 
 function freqNumber(freq, row) {
@@ -1155,6 +1160,7 @@ export async function inspectPps(buffer, filename = "upload.xlsx") {
     winningTiers: rows.length,
     uniquePrizes: groupPrizes(rows, "factor").length,
     duplicateMethods: rows.duplicateMethods || [],
+    zeroFrequency: rows.zeroFrequency || [],
     wins,
     hitRate: quantity / wins,
     prizeFund: fund,
@@ -1261,6 +1267,7 @@ export async function buildPps(buffer, filename, options = {}) {
     winningTiers: rows.length,
     uniquePrizes: odds.uniquePrizes,
     duplicateMethods: rows.duplicateMethods || [],
+    zeroFrequency: rows.zeroFrequency || [],
     wins,
     hitRate: quantity / wins,
     prizeFund: fund,

@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-6";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-7";
 
 const $ = (id) => document.getElementById(id);
 
@@ -111,8 +111,8 @@ function renderInspect(info) {
   if (info.existingDelivery.length) {
     bits.push(`Will replace existing ${info.existingDelivery.map((n) => `<code>${n}</code>`).join(", ")}.`);
   }
-  if (info.duplicateMethods?.length) {
-    bits.push(`Frequency has ${info.duplicateMethods.length} repeated method label(s); all rows are still written.`);
+  if (info.zeroFrequency?.length) {
+    bits.push(`Skipped ${info.zeroFrequency.length} Frequency row(s) with 0 Odds up.`);
   }
   if (!info.kentucky) {
     bits.push("Kentucky identity was not found in the labels or filename.");

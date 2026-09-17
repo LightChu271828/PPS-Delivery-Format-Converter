@@ -147,4 +147,21 @@ assert(scroogePb.getCell(freeplayRow, 6).value === 3, `FreePlay qty ${scroogePb.
 const scroogeOut = path.join(outDir, path.basename(scrooge).replace(/\.xlsx$/i, "_Delivery.xlsx"));
 await writeFile(scroogeOut, Buffer.from(scroogeBuilt.buffer));
 console.log("scrooge saved", scroogeOut, "bonus", bonusRow, "freeplay", freeplayRow);
+
+const fiesta = path.join(
+  process.env.USERPROFILE,
+  "OneDrive - Instant Win Gaming Ltd",
+  "PPS Excels",
+  "KY",
+  "260710_KY_FiestaPepperPayout(SSJ)_PPS_083_004 - test.xlsx",
+);
+const fiestaBuf = await readFile(fiesta);
+const fiestaInfo = await inspectPps(fiestaBuf, path.basename(fiesta));
+assert(fiestaInfo.schema === "SSJ", `Fiesta schema ${fiestaInfo.schema}`);
+assert(fiestaInfo.zeroFrequency?.length === 11, `Fiesta zero-frequency ${fiestaInfo.zeroFrequency?.length}`);
+const fiestaBuilt = await buildPps(fiestaBuf, path.basename(fiesta), { templates });
+assert(fiestaBuilt.report.winningTiers === fiestaInfo.winningTiers, "Fiesta inspect/build tier mismatch");
+const fiestaOut = path.join(outDir, path.basename(fiesta).replace(/\.xlsx$/i, "_Delivery.xlsx"));
+await writeFile(fiestaOut, Buffer.from(fiestaBuilt.buffer));
+console.log("fiesta saved", fiestaOut, "tiers", fiestaBuilt.report.winningTiers, "skipped", fiestaInfo.zeroFrequency.length);
 console.log("ok");
