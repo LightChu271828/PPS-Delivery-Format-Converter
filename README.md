@@ -17,16 +17,18 @@ Same shape as [must-go jackpot designer](https://lightchu271828.github.io/mustgo
 
 Source sheets stay. Existing delivery tabs are replaced.
 
-Schema is auto-detected from the workbook:
+Jackpot type is read from the filename and Win Methods, and shown with that exact spelling:
 
-| Schema | How it is recognised | Layout |
+| Type | How it is recognised | Layout |
 | --- | --- | --- |
-| SSJ | Jackpots named `small` / `large`, or `SSJ` in the filename / labels | One ticket price |
-| MMJ3 | `MMJ3` in the filename / labels, or 1–2 jackpots that are not small/large | Price grid + JP |
+| ChatterJP | `ChatterJP` in the filename or Win Methods | Default 8-price grid + JP |
+| MMJ3 | `MMJ3` in the filename or Win Methods | Default 8-price grid + JP |
+| MMJ | `MMJ` in the filename or Win Methods | Default 8-price grid + JP |
+| SSJ | `SSJ` in the filename or Win Methods | Default 8-price grid + JP |
 | Daily Streak | No jackpot data, Daily Streak in the filename / labels | No-JP grid including $3 |
-| No jackpot | Blank Progressive Jackpots | No-JP price grid |
+| No jackpot | Blank Progressive Jackpots | Default 8-price grid |
 
-A generic MMJ (not MMJ3) currently uses the MMJ3 layout. Use the schema dropdown to override.
+Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, pick the type in the dropdown.
 
 ## What you need in the file
 

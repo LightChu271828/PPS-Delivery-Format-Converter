@@ -13,11 +13,16 @@ export const DELIVERY_SHEETS = [
   "Prize Breakdown",
 ];
 
+export const JACKPOT_TYPES = ["ChatterJP", "MMJ3", "MMJ", "SSJ"];
+export const DEFAULT_PRICE_GRID = [0.5, 1, 2, 5, 10, 20, 30, 50];
+export const DAILY_STREAK_PRICE_GRID = [0.5, 1, 2, 3, 5, 10, 20, 30, 50];
 export const PRICE_GRIDS = {
-  mmj3: [0.5, 1, 2, 5, 10, 20, 30, 50],
-  "no-jp": [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 50],
-  "daily-streak": [0.5, 1, 2, 3, 5, 10, 20, 30, 50],
-  ssj: null,
+  MMJ: DEFAULT_PRICE_GRID,
+  MMJ3: DEFAULT_PRICE_GRID,
+  SSJ: DEFAULT_PRICE_GRID,
+  ChatterJP: DEFAULT_PRICE_GRID,
+  "No jackpot": DEFAULT_PRICE_GRID,
+  "Daily Streak": DAILY_STREAK_PRICE_GRID,
 };
 
 const STANDARD_COLORS = {
@@ -307,9 +312,7 @@ function ssjJackpots(entries) {
     const key = item.name.toLowerCase();
     if (key) byName[key] = item;
   }
-  if (!byName.small || !byName.large) {
-    throw new Error(`SSJ jackpots must include small and large, found ${entries.map((e) => e.name).join(", ") || "none"}`);
-  }
+  if (!byName.small || !byName.large) return null;
   return {
     small: byName.small,
     large: byName.large,
@@ -322,19 +325,78 @@ function ssjJackpots(entries) {
   };
 }
 
-function detectSchema({ identity, filename, jpEntries, hasPjSheet }) {
-  const blob = `${identity} ${filename}`.toLowerCase();
-  if (!jpEntries.length) {
-    if (/daily\s*streak|dailystreak/.test(blob)) return "daily-streak";
-    return "no-jp";
+function sheetCorpus(ws, maxRow = 80, maxCol = 16) {
+  if (!ws) return "";
+  const parts = [];
+  const lastRow = Math.min(ws.rowCount || 0, maxRow);
+  const lastCol = Math.min(ws.columnCount || 0, maxCol);
+  for (let row = 1; row <= lastRow; row += 1) {
+    for (let col = 1; col <= lastCol; col += 1) {
+      const v = cellResult(ws.getCell(row, col));
+      if (v != null && v !== "") parts.push(String(v));
+    }
   }
-  if (!hasPjSheet) return "no-jp";
-  const names = jpEntries.map((e) => e.name.toLowerCase());
-  if (names.includes("small") && names.includes("large")) return "ssj";
-  if (/\bssj\b/.test(blob)) return "ssj";
-  if (/\bmmj3\b/.test(blob)) return "mmj3";
-  if (jpEntries.length <= 2) return "mmj3";
-  throw new Error("Unsupported jackpot layout (more than two JP rows, and not SSJ small/large).");
+  return parts.join(" ");
+}
+
+export function findJackpotType(corpus) {
+  const text = String(corpus || "");
+  const types = [
+    { id: "ChatterJP", re: /chatter\s*jp/i },
+    { id: "MMJ3", re: /mmj3/i },
+    { id: "MMJ", re: /mmj(?!3)/i },
+    { id: "SSJ", re: /ssj/i },
+  ];
+  for (const type of types) {
+    if (type.re.test(text)) return type.id;
+  }
+  return null;
+}
+
+function isJpSchema(schema) {
+  return JACKPOT_TYPES.includes(schema);
+}
+
+function normalizeSchema(schema) {
+  if (!schema || schema === "auto") return schema;
+  const aliases = {
+    ssj: "SSJ",
+    mmj: "MMJ",
+    mmj3: "MMJ3",
+    chatterjp: "ChatterJP",
+    "chatter-jp": "ChatterJP",
+    "no-jp": "No jackpot",
+    nojp: "No jackpot",
+    "daily-streak": "Daily Streak",
+    dailystreak: "Daily Streak",
+  };
+  return aliases[String(schema).toLowerCase()] || schema;
+}
+
+function priceGridFor(schema) {
+  return PRICE_GRIDS[schema] || DEFAULT_PRICE_GRID;
+}
+
+function prizeFactor(prize, base) {
+  if (!base || Math.abs(base - 1) < 1e-9) return cleanFloat(prize);
+  return cleanFloat(prize / base);
+}
+
+function rowDollarPrize(row, base) {
+  return prizeFactor(row.prize, base) * (base || 1);
+}
+
+export function detectSchema({ identity, filename, winMethods, jpEntries }) {
+  const corpus = `${identity || ""} ${filename || ""} ${sheetCorpus(winMethods)}`;
+  const jpType = findJackpotType(corpus);
+  if (!jpEntries.length) {
+    if (/daily\s*streak|dailystreak/i.test(corpus)) return "Daily Streak";
+    return "No jackpot";
+  }
+  if (jpType) return jpType;
+  throw new Error(
+    "Jackpot data is present but MMJ, MMJ3, SSJ, or ChatterJP was not found in the filename or Win Methods. Pick the type in the dropdown.",
+  );
 }
 
 function sourceRows(freq) {
@@ -493,8 +555,8 @@ function groupPrizes(rows, prizeKey) {
 }
 
 function buildDelivery(ws, templateWs, src, rows, ctx) {
-  const { schema, fills, freq, pj, jpEntries, ssj } = ctx;
-  const hasJp = schema === "ssj" || schema === "mmj3";
+  const { schema, fills, freq, pj, jpEntries } = ctx;
+  const hasJp = isJpSchema(schema);
   const lastWinRow = 3 + rows.length;
   const nonwinRow = lastWinRow + 1;
   const totalRow = nonwinRow + 1;
@@ -521,7 +583,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
 
   rows.forEach((item, idx) => {
     const row = 4 + idx;
-    const factor = schema === "ssj" ? cleanFloat(item.prize / base) : item.prize;
+    const factor = prizeFactor(item.prize, base);
     setValue(ws, `B${row}`, idx + 1).numFmt = "00";
     setValue(ws, `C${row}`, item.method);
     applyMethodFill(ws.getCell(`C${row}`), item.method, fills);
@@ -587,7 +649,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
   if (hasJp) {
     setValue(ws, "N11", '=IF(ABS(M11-M10)<1E-10,"okay","error")');
     setValue(ws, "L12", "JP RTP:");
-    if (schema === "ssj") {
+    if (schema === "SSJ") {
       setValue(ws, "M12", `=C${jpStart + 12}+C${jpStart + 19}`);
     } else {
       setValue(ws, "M12", "='Progressive Jackpots'!$C$14+'Progressive Jackpots'!$C$21");
@@ -600,7 +662,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     setValue(ws, "M15", "=M6/M14");
     ws.getCell("M12").numFmt = "0.00%";
     ws.getCell("M13").numFmt = "0.00%";
-    if (schema === "ssj") {
+    if (schema === "SSJ") {
       setValue(ws, "L17", CONFIDENTIAL);
       try {
         ws.mergeCells("L17:O21");
@@ -639,7 +701,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
       const dstRow = jpStart + (srcRow - 2);
       copyRowStyle(templateWs, ws, tpl.jpStart + (srcRow - 2), dstRow, 2, 24);
       for (let col = 2; col <= 24; col += 1) {
-        if (schema === "ssj" && srcRow <= 7 && col >= 5) {
+        if (schema === "SSJ" && srcRow <= 7 && col >= 5) {
           ws.getCell(dstRow, col).value = null;
           continue;
         }
@@ -655,7 +717,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
         }
       }
     }
-    if (schema === "ssj") {
+    if (schema === "SSJ") {
       setValue(ws, `C${jpStart + 23}`, `=C${jpStart}/F${jpStart + 12}`);
       setValue(ws, `C${jpStart + 24}`, `=1/((1/C${jpStart + 23})+(1/M15))`);
       setValue(ws, `C${jpStart + 25}`, `=M6-(F${jpStart + 12}/(G${jpStart + 10}/M6)+M14)`);
@@ -730,8 +792,9 @@ function buildOddsSsj(ws, templateWs, rows, delivery, ctx) {
 }
 
 function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
-  const prizes = groupPrizes(rows, "prize");
+  const prizes = groupPrizes(rows, "factor");
   const grid = ctx.priceGrid;
+  const jpList = ctx.ssj?.oddsOrder || ctx.jpEntries;
   copySheetChrome(templateWs, ws);
   copyColumnWidths(templateWs, ws, 17);
   setValue(ws, "A1", "Ticket Price");
@@ -740,7 +803,7 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
     setValue(ws, { row: 1, col: priceCol }, price);
     setValue(ws, { row: 1, col: priceCol + 1 }, "1 in X Odds ");
   });
-  ctx.jpEntries.forEach((jp, offset) => {
+  jpList.forEach((jp, offset) => {
     const row = 2 + offset;
     setValue(ws, `A${row}`, jp.label);
     setValue(ws, `B${row}`, currencyStar(jp.prize));
@@ -754,7 +817,7 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
       setValue(ws, `${o}${row}`, `=E${row}/${p}$1`);
     }
   });
-  const firstRow = 2 + ctx.jpEntries.length;
+  const firstRow = 2 + jpList.length;
   const lastWin = delivery.lastWinRow;
   prizes.forEach((prize, offset) => {
     const row = firstRow + offset;
@@ -777,7 +840,7 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
     setValue(ws, `${p}${nonwinRow}`, "NON WINNING");
     setValue(ws, `${o}${nonwinRow}`, priceCol === 4 ? `='Delivery'!$M$6/'Delivery'!$F$${delivery.nonwinRow}` : `=E${nonwinRow}`);
   }
-  reflowOddsJp(ws, templateWs, ctx.jpEntries.length, firstRow, nonwinRow, 17);
+  reflowOddsJp(ws, templateWs, jpList.length, firstRow, nonwinRow, 17);
   for (let row = 1; row <= nonwinRow; row += 1) {
     for (let col = 2; col <= 17; col += 1) ws.getCell(row, col).numFmt = "#,##0.00";
   }
@@ -785,7 +848,7 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
 }
 
 function buildOddsNoJp(ws, templateWs, rows, delivery, ctx) {
-  const prizes = groupPrizes(rows, "prize");
+  const prizes = groupPrizes(rows, "factor");
   const grid = ctx.priceGrid;
   const baseCol = priceGridBaseCol(grid);
   const baseLetter = colLetter(baseCol);
@@ -868,7 +931,7 @@ function buildSummarySsj(ws, templateWs, ctx, delivery) {
 
 function buildSummaryGrid(ws, templateWs, ctx) {
   const grid = ctx.priceGrid;
-  const hasJp = ctx.schema === "mmj3";
+  const hasJp = isJpSchema(ctx.schema);
   const dist = summaryDistribution(ctx.summary);
   const baseCol = priceGridBaseCol(grid);
   const baseLetter = colLetter(baseCol);
@@ -1152,7 +1215,14 @@ export async function inspectPps(buffer, filename = "upload.xlsx") {
   const identity = identityText(freq);
   const pj = sheet(wb, "Progressive Jackpots");
   const jpEntries = progressiveJackpots(pj);
-  const schema = detectSchema({ identity, filename, jpEntries, hasPjSheet: Boolean(pj) });
+  const winMethods = sheet(wb, "Win Methods");
+  let schema = null;
+  let schemaError = null;
+  try {
+    schema = detectSchema({ identity, filename, winMethods, jpEntries });
+  } catch (err) {
+    schemaError = err.message;
+  }
   const quantity = freqNumber(freq, 6);
   const base = freqNumber(freq, 7);
   const rtp = freqNumber(freq, 10);
@@ -1160,21 +1230,24 @@ export async function inspectPps(buffer, filename = "upload.xlsx") {
     throw new Error("Frequency N6 pool / N7 ticket price is missing or zero.");
   }
   const rows = sourceRows(freq);
+  for (const row of rows) row.factor = prizeFactor(row.prize, base);
   const missingCache = rows.length && rows.some((r) => !r.method);
   const wins = rows.reduce((s, r) => s + r.winners, 0);
-  const fund = rows.reduce((s, r) => s + r.prize * r.winners, 0);
-  const actualRtp = schema === "ssj" ? fund / (quantity * base) : fund / quantity;
+  const fund = rows.reduce((s, r) => s + rowDollarPrize(r, base) * r.winners, 0);
+  const actualRtp = fund / (quantity * base);
   return {
     filename,
     identity,
     kentucky: isKentucky(identity, filename),
     schema,
+    schemaError,
+    priceGrid: schema ? priceGridFor(schema) : DEFAULT_PRICE_GRID,
     sheets: wb.worksheets.map((ws) => ws.name),
     quantity,
     base,
     rtp: Number.isFinite(rtp) ? rtp : null,
     winningTiers: rows.length,
-    uniquePrizes: groupPrizes(rows, "prize").length,
+    uniquePrizes: groupPrizes(rows, "factor").length,
     duplicateMethods: rows.duplicateMethods || [],
     wins,
     hitRate: quantity / wins,
@@ -1201,9 +1274,15 @@ export async function buildPps(buffer, filename, options = {}) {
   }
   const pj = sheet(wb, "Progressive Jackpots");
   const jpEntries = progressiveJackpots(pj);
-  let schema = options.schema && options.schema !== "auto"
-    ? options.schema
-    : detectSchema({ identity, filename, jpEntries, hasPjSheet: Boolean(pj) });
+  const summary = sheet(wb, "Summary");
+  const winMethods = requireSheet(wb, "Win Methods");
+  const pay = requireSheet(wb, "Pay Table");
+  const freePlays = sheet(wb, "Free Plays");
+  const requested = normalizeSchema(options.schema);
+  const schema =
+    requested && requested !== "auto"
+      ? requested
+      : detectSchema({ identity, filename, winMethods, jpEntries });
   const quantity = freqNumber(freq, 6);
   const base = freqNumber(freq, 7);
   const rtp = freqNumber(freq, 10);
@@ -1212,16 +1291,15 @@ export async function buildPps(buffer, filename, options = {}) {
   }
   if (!Number.isFinite(rtp)) throw new Error("Frequency N10 RTP setting is missing.");
   const rows = sourceRows(freq);
-  const summary = sheet(wb, "Summary");
-  const winMethods = requireSheet(wb, "Win Methods");
-  const pay = requireSheet(wb, "Pay Table");
-  const freePlays = sheet(wb, "Free Plays");
+  for (const row of rows) row.factor = prizeFactor(row.prize, base);
   const fills = winMethodFills(winMethods);
-  let ssj = null;
-  if (schema === "ssj") ssj = ssjJackpots(jpEntries);
-
-  const priceGrid = PRICE_GRIDS[schema] || null;
-  const templateName = schema === "ssj" ? "ssj" : schema === "mmj3" ? "mmj3" : "no-jp";
+  const hasJp = isJpSchema(schema);
+  if (hasJp && !jpEntries.length) {
+    throw new Error(`${schema} was selected, but Progressive Jackpots has no jackpot rows.`);
+  }
+  const ssj = schema === "SSJ" ? ssjJackpots(jpEntries) : null;
+  const priceGrid = priceGridFor(schema);
+  const templateName = hasJp ? "mmj3" : "no-jp";
   const templateBuffer = templates[templateName] || templates.mmj3 || templates["no-jp"];
   if (!templateBuffer) throw new Error(`Template not loaded: ${templateName}`);
   const templateWb = await loadWorkbook(templateBuffer);
@@ -1261,14 +1339,10 @@ export async function buildPps(buffer, filename, options = {}) {
   const prizeWs = insertSheet(wb, "Prize Breakdown");
 
   const delivery = buildDelivery(deliveryWs, deliveryTemplate, wb, rows, ctx);
-  let odds;
-  if (schema === "ssj") odds = buildOddsSsj(oddsWs, oddsTemplate, rows, delivery, ctx);
-  else if (schema === "mmj3") odds = buildOddsMmj3(oddsWs, oddsTemplate, rows, delivery, ctx);
-  else odds = buildOddsNoJp(oddsWs, oddsTemplate, rows, delivery, ctx);
-  const dist =
-    schema === "ssj"
-      ? buildSummarySsj(summaryWs, summaryTemplate, ctx, delivery)
-      : buildSummaryGrid(summaryWs, summaryTemplate, ctx);
+  const odds = hasJp
+    ? buildOddsMmj3(oddsWs, oddsTemplate, rows, delivery, ctx)
+    : buildOddsNoJp(oddsWs, oddsTemplate, rows, delivery, ctx);
+  const dist = buildSummaryGrid(summaryWs, summaryTemplate, ctx);
   const prizeLast = buildPrizeBreakdown(prizeWs, prizeTemplate, ctx);
   orderSheets(wb);
 
@@ -1276,13 +1350,14 @@ export async function buildPps(buffer, filename, options = {}) {
   wb.calcProperties.fullCalcOnLoad = true;
 
   const wins = rows.reduce((s, r) => s + r.winners, 0);
-  const fund = rows.reduce((s, r) => s + r.prize * r.winners, 0);
+  const fund = rows.reduce((s, r) => s + rowDollarPrize(r, base) * r.winners, 0);
   const outBuffer = await wb.xlsx.writeBuffer();
   const report = {
     filename,
     identity,
     kentucky,
     schema,
+    priceGrid,
     quantity,
     base,
     rtp,
@@ -1292,7 +1367,7 @@ export async function buildPps(buffer, filename, options = {}) {
     wins,
     hitRate: quantity / wins,
     prizeFund: fund,
-    actualRtp: schema === "ssj" ? fund / (quantity * base) : fund / (quantity * (schema === "mmj3" ? 1 : base)),
+    actualRtp: fund / (quantity * base),
     dist,
     delivery,
     oddsLast: odds.nonwinRow,

@@ -179,10 +179,12 @@
             <span>Schema</span>
             <select id="schema">
               <option value="auto">Auto-detect</option>
-              <option value="ssj">SSJ (one price, small/large JP)</option>
-              <option value="mmj3">MMJ3 (price grid + JP)</option>
-              <option value="no-jp">No jackpot</option>
-              <option value="daily-streak">Daily Streak Booster</option>
+              <option value="SSJ">SSJ</option>
+              <option value="MMJ">MMJ</option>
+              <option value="MMJ3">MMJ3</option>
+              <option value="ChatterJP">ChatterJP</option>
+              <option value="No jackpot">No jackpot</option>
+              <option value="Daily Streak">Daily Streak Booster</option>
             </select>
           </label>
         </div>
@@ -217,7 +219,7 @@
             </thead>
             <tbody>
               <tr><td>Delivery</td><td>One row per win method, prize factor × ticket, Odds up, RTP / hit rate, JP block if present</td></tr>
-              <tr><td>Odds Table</td><td>Same-payout tiers merged; 1-in-X = pool / grouped winners</td></tr>
+              <tr><td>Odds Table</td><td>Same-payout tiers merged; default prices 0.5, 1, 2, 5, 10, 20, 30, 50; 1-in-X = pool / grouped winners</td></tr>
               <tr><td>Summary(Delivery)</td><td>Payout, hit rate, x0–x5 / x5–x20 / x20–top, JP ratios</td></tr>
               <tr><td>Prize Breakdown</td><td>Win Methods order, Pay Table matrix</td></tr>
             </tbody>

@@ -42,12 +42,11 @@ async function fetchTemplate(name) {
 async function loadTemplates() {
   const pill = $("templateStatus");
   try {
-    const [mmj3, nojp, ssj] = await Promise.all([
+    const [mmj3, nojp] = await Promise.all([
       fetchTemplate("mmj3.xlsx"),
       fetchTemplate("no-jp.xlsx"),
-      fetchTemplate("summary-ssj.xlsx"),
     ]);
-    state.templates = { mmj3, "no-jp": nojp, ssj };
+    state.templates = { mmj3, "no-jp": nojp };
     pill.textContent = "Templates ready";
     pill.className = "pill ok";
   } catch (err) {
@@ -97,7 +96,7 @@ function renderInspect(info) {
   $("inspectBlock").hidden = false;
   const kyClass = info.kentucky ? "ok" : "warn";
   $("inspectStats").innerHTML = [
-    stat(info.schema, "Schema"),
+    stat(info.schema || "—", "Schema", info.schemaError ? "warn" : ""),
     stat(info.winningTiers, "Winning tiers"),
     stat(fmt(info.wins, 0), "Wins / pool"),
     stat(fmt(info.hitRate, 3), "Hit rate"),
@@ -106,7 +105,9 @@ function renderInspect(info) {
   ].join("");
   const bits = [];
   bits.push(`Ticket <b>$${info.base}</b>, pool <b>${fmt(info.quantity, 0)}</b>.`);
+  if (info.priceGrid?.length) bits.push(`Price grid: <b>${info.priceGrid.join(", ")}</b>.`);
   if (info.jpCount) bits.push(`Jackpots: <b>${info.jpNames.join(", ") || info.jpCount}</b>.`);
+  if (info.schemaError) bits.push(info.schemaError);
   if (info.existingDelivery.length) {
     bits.push(`Will replace existing ${info.existingDelivery.map((n) => `<code>${n}</code>`).join(", ")}.`);
   }
@@ -116,7 +117,7 @@ function renderInspect(info) {
   if (!info.kentucky) {
     bits.push("Kentucky identity was not found in the labels or filename.");
   }
-  $("inspectNote").className = info.kentucky ? "note" : "note warn";
+  $("inspectNote").className = info.schemaError ? "note warn" : info.kentucky ? "note" : "note warn";
   $("inspectNote").innerHTML = bits.join(" ");
 }
 
