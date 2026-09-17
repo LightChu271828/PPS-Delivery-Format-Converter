@@ -1,0 +1,11 @@
+{
+  "name": "ky-pps-delivery",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser tool that adds Kentucky Lottery PPS delivery tabs to an uploaded workbook.",
+  "scripts": {
+    "start": "python -m http.server 8765",
+    "test": "node test-build.mjs"
+  }
+}

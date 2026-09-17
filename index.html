@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kentucky Lottery PPS — delivery tabs</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-soft: #f6f7f9;
+      --bg-inset: #eceef1;
+      --text: #16181d;
+      --text-dim: #5b6270;
+      --text-faint: #8a919e;
+      --line: #dfe2e7;
+      --line-soft: #eaecf0;
+      --accent: #2f6feb;
+      --ok: #1a7f4b;
+      --warn: #a86300;
+      --bad: #b4291f;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a;
+        --bg-soft: #1b1e23;
+        --bg-inset: #23262c;
+        --text: #e6e8ec;
+        --text-dim: #a2a9b6;
+        --text-faint: #737b88;
+        --line: #2c3037;
+        --line-soft: #23262c;
+        --accent: #5c93ff;
+        --ok: #4ec98a;
+        --warn: #e0a34a;
+        --bad: #f06a5f;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 22px 72px; }
+    h1 { font-size: 21px; margin: 0 0 6px; font-weight: 650; letter-spacing: -0.01em; }
+    h2 { font-size: 15px; margin: 34px 0 10px; font-weight: 620; }
+    p { margin: 0 0 10px; color: var(--text-dim); }
+    a { color: var(--accent); }
+    code, .mono { font-family: var(--mono); font-size: 0.92em; }
+    hr { border: 0; border-top: 1px solid var(--line-soft); margin: 30px 0; }
+
+    .topbar { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .topbar > div:first-child { flex: 1 1 420px; min-width: 0; }
+    .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      font: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 5px;
+      border: 1px solid var(--line); background: var(--bg-soft); color: var(--text);
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--text-faint); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); }
+    .panel-h {
+      padding: 8px 13px; border-bottom: 1px solid var(--line); font-size: 12px;
+      color: var(--text-dim); display: flex; justify-content: space-between; gap: 12px;
+    }
+    .panel-b { padding: 14px; }
+
+    .drop {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 28px 18px;
+      text-align: center;
+      background: var(--bg);
+      cursor: pointer;
+    }
+    .drop:hover, .drop.drag {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+    }
+    .drop strong { display: block; margin-bottom: 4px; }
+    .file { font-family: var(--mono); font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 13px; margin-top: 14px; }
+    label.field { display: block; }
+    label.field > span { display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; }
+    select, input[type=checkbox] { accent-color: var(--accent); }
+    select {
+      width: 100%; font: inherit; font-size: 13px; padding: 5px 8px;
+      border: 1px solid var(--line); border-radius: 5px;
+      background: var(--bg); color: var(--text);
+    }
+    .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); margin-top: 12px; }
+
+    .rebuild {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line);
+    }
+    .rebuild button { font-size: 13px; font-weight: 600; padding: 8px 16px; }
+    .hint { font-size: 11px; color: var(--text-faint); margin-top: 0; flex: 1 1 240px; }
+
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1px; background: var(--line); border: 1px solid var(--line);
+      border-radius: 8px; overflow: hidden;
+    }
+    .stat { background: var(--bg-soft); padding: 11px 13px; }
+    .stat .v { font-size: 19px; font-weight: 620; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+    .stat .l { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+    .stat .v.ok { color: var(--ok); }
+    .stat .v.warn { color: var(--warn); }
+    .stat .v.bad { color: var(--bad); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); }
+    th { font-weight: 600; color: var(--text-dim); font-size: 11.5px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+    .note { border-left: 2px solid var(--line); padding: 2px 0 2px 12px; color: var(--text-dim); font-size: 12.5px; }
+    .note.warn { border-color: var(--warn); }
+    .note.bad { border-color: var(--bad); }
+    .note.ok { border-color: var(--ok); }
+    .note b { color: var(--text); }
+    .pill {
+      display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px;
+      border: 1px solid var(--line); color: var(--text-dim);
+    }
+    .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+    .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+    .pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+    .toast {
+      position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+      background: var(--text); color: var(--bg); font-size: 12.5px;
+      padding: 7px 14px; border-radius: 6px; opacity: 0; pointer-events: none;
+      transition: opacity .18s;
+    }
+    .toast.on { opacity: 1; }
+    .hidden { display: none; }
+    .log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; color: var(--text-dim); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Kentucky Lottery PPS — delivery tabs</h1>
+        <p>
+          Upload a Kentucky PPS. This page adds <code>Delivery</code>, <code>Odds Table</code>,
+          <code>Summary(Delivery)</code>, and <code>Prize Breakdown</code> from Frequency, then
+          lets you download a new workbook. Source tabs stay intact. Everything runs in this page.
+        </p>
+      </div>
+      <div class="btnrow">
+        <button type="button" id="resetBtn">Reset</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="panel-h">
+        <span>Workbook</span>
+        <span id="templateStatus" class="pill">Loading templates…</span>
+      </div>
+      <div class="panel-b">
+        <div class="drop" id="drop" tabindex="0">
+          <strong>Drop a PPS .xlsx here, or click to browse</strong>
+          <span class="hint">Frequency must already be calculated and saved in Excel so method names and prizes are cached.</span>
+          <div class="file" id="fileLabel"></div>
+        </div>
+        <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+
+        <div class="controls">
+          <label class="field">
+            <span>Schema</span>
+            <select id="schema">
+              <option value="auto">Auto-detect</option>
+              <option value="ssj">SSJ (one price, small/large JP)</option>
+              <option value="mmj3">MMJ3 (price grid + JP)</option>
+              <option value="no-jp">No jackpot</option>
+              <option value="daily-streak">Daily Streak Booster</option>
+            </select>
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="allowNonKy" />
+          This is a Kentucky PPS (override if the filename / labels are not obvious)
+        </label>
+
+        <div class="rebuild">
+          <button type="button" class="primary" id="buildBtn" disabled>Add four tabs</button>
+          <button type="button" id="downloadBtn" disabled>Download workbook</button>
+          <span class="hint" id="statusHint">Choose a PPS to inspect it before building.</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="inspectBlock" class="hidden" hidden>
+      <h2>Detected source</h2>
+      <div class="stats" id="inspectStats"></div>
+      <p class="note" id="inspectNote" style="margin-top:12px"></p>
+    </div>
+
+    <div id="resultBlock" class="hidden" hidden>
+      <h2>Built workbook</h2>
+      <div class="stats" id="resultStats"></div>
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-h">What was written</div>
+        <div class="panel-b">
+          <table>
+            <thead>
+              <tr><th>Tab</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Delivery</td><td>One row per win method, prize factor × ticket, Odds up, RTP / hit rate, JP block if present</td></tr>
+              <tr><td>Odds Table</td><td>Same-payout tiers merged; 1-in-X = pool / grouped winners</td></tr>
+              <tr><td>Summary(Delivery)</td><td>Payout, hit rate, x0–x5 / x5–x20 / x20–top, JP ratios</td></tr>
+              <tr><td>Prize Breakdown</td><td>Win Methods order, Pay Table matrix</td></tr>
+            </tbody>
+          </table>
+          <p class="note" style="margin-top:12px">
+            Excel recalculates formulas when you open the file. Cached numbers in this page are
+            independent sums from Frequency, not Excel’s engine.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h2>What this does not do</h2>
+    <p class="note">
+      It does not retune Frequency, RTP, or jackpot math. Combined multi-price Delivery packs
+      are not inputs — upload the per-price PPS. Christmas / non-Kentucky workbooks are refused
+      unless you override. If ExcelJS cannot open a file, open it in Excel and Save As .xlsx first.
+      Native Excel formatting will be close to the KY templates, not a pixel-perfect clone of every
+      theme index.
+    </p>
+
+    <hr />
+    <p class="hint">
+      Same idea as
+      <a href="https://lightchu271828.github.io/mustgo-jackpot-designer/">must-go jackpot designer</a>:
+      static page, no server, file never leaves the browser.
+    </p>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="./vendor/exceljs.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
