@@ -126,16 +126,19 @@ function clone(obj) {
 
 function copyStyle(src, dst) {
   if (!src || !dst) return;
-  try {
-    if (src.font && Object.keys(src.font).length) dst.font = clone(src.font);
-    if (src.fill && src.fill.type) dst.fill = clone(src.fill);
-    if (src.border && Object.keys(src.border).length) dst.border = clone(src.border);
-    if (src.alignment && Object.keys(src.alignment).length) dst.alignment = clone(src.alignment);
-    if (src.protection && Object.keys(src.protection).length) dst.protection = clone(src.protection);
-    if (src.numFmt) dst.numFmt = src.numFmt;
-  } catch {
-    /* theme-bound styles can fail to clone; values still write */
-  }
+  const assign = (key, value) => {
+    try {
+      dst[key] = value;
+    } catch {
+      /* theme-bound styles can fail to clone; remaining properties still write */
+    }
+  };
+  if (src.font && Object.keys(src.font).length) assign("font", clone(src.font));
+  if (src.fill && src.fill.type) assign("fill", clone(src.fill));
+  if (src.border && Object.keys(src.border).length) assign("border", clone(src.border));
+  if (src.alignment && Object.keys(src.alignment).length) assign("alignment", clone(src.alignment));
+  if (src.protection && Object.keys(src.protection).length) assign("protection", clone(src.protection));
+  if (src.numFmt) assign("numFmt", src.numFmt);
 }
 
 function copyRowStyle(srcWs, dstWs, srcRow, dstRow, minCol, maxCol) {
@@ -639,7 +642,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     ws.getCell(`J${row}`).numFmt = "0.00%";
   }
 
-  for (let row = 2; row <= 23; row += 1) copyRowStyle(templateWs, ws, row, row, 12, 15);
+  for (let row = 2; row <= 16; row += 1) copyRowStyle(templateWs, ws, row, row, 12, 15);
   setValue(ws, "L2", "Prize Structure");
   setValue(ws, "L3", "Kentucky Lottery");
   setValue(ws, "L4", cellResult(freq.getCell("M4")) || cellResult(freq.getCell("L4")) || "");
@@ -682,20 +685,13 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
         /* already merged */
       }
     } else {
-      setValue(ws, "L17", "Approx Count:");
-      setValue(ws, "M17", cleanFloat(cellResult(freq.getCell("N17"))));
-      setValue(ws, "L18", "Winning Tiers");
-      setValue(ws, "M18", `=COUNT(F4:F${lastWinRow})`);
-      setValue(ws, "L19", "Min per tier");
-      setValue(ws, "M19", cleanFloat(cellResult(freq.getCell("N19"))));
-      setValue(ws, "L21", "Difference:");
-      setValue(ws, "M21", "=M8*M10-M9");
-      setValue(ws, "L22", "Actual RTP Check:");
-      setValue(ws, "M22", `=SUM(H4:H${lastWinRow})/M8`);
-      setValue(ws, "L23", "Actual Hit Rate check");
-      setValue(ws, "M23", `=SUM(F4:F${lastWinRow})`);
-      setValue(ws, "N23", '=IF(M15=M23,"okay","error")');
-      ws.getCell("M22").numFmt = "0.00%";
+      for (let row = 17; row <= 23; row += 1) {
+        for (const col of ["L", "M", "N", "O"]) {
+          const cell = ws.getCell(`${col}${row}`);
+          cell.value = null;
+          clearFillBorder(cell);
+        }
+      }
     }
   } else {
     setValue(ws, "L12", "Winning Tiers Freq");
@@ -945,6 +941,10 @@ function buildSummaryGrid(ws, templateWs, ctx) {
       setValue(ws, `${col}23`, isBase ? "='Progressive Jackpots'!$C$21" : `=${baseLetter}$23`);
       setValue(ws, `${col}24`, `=${col}23*${col}15`);
     });
+    const maxSummaryCol = grid.length + 1;
+    for (let row = 15; row <= 24; row += 1) {
+      copyRowStyle(templateWs, ws, row === 24 ? 28 : row, row, 1, maxSummaryCol);
+    }
     return dist;
   }
   const jpLabels = [
@@ -980,6 +980,11 @@ function buildSummaryGrid(ws, templateWs, ctx) {
     setValue(ws, `${col}27`, isBase ? "='Progressive Jackpots'!$C$21" : `=${baseLetter}$27`);
     setValue(ws, `${col}28`, `=${col}27*${col}15`);
   });
+  const lastSummaryRow = 28;
+  const maxSummaryCol = grid.length + 1;
+  for (let row = 15; row <= lastSummaryRow; row += 1) {
+    copyRowStyle(templateWs, ws, row, row, 1, maxSummaryCol);
+  }
   return dist;
 }
 
@@ -1025,31 +1030,9 @@ function symbolLabel(value, symbolCodes) {
     .join("/");
 }
 
-function buildBonusLabels(pay, wm) {
-  const labels = {};
-  const maxPay = pay?.rowCount || 0;
-  for (let row = 1; row <= maxPay; row += 1) {
-    const method = cellResult(pay.getCell(row, 2));
-    if (!method) continue;
-    const prefix = methodPrefix(method);
-    const label = cellResult(pay.getCell(row, 5));
-    if (label && prefix.startsWith("bonus") && !labels[prefix]) labels[prefix] = label;
-  }
-  const maxWm = wm?.rowCount || 0;
-  for (let row = 5; row <= maxWm; row += 1) {
-    const method = cellResult(wm.getCell(row, 3));
-    if (!method) continue;
-    const prefix = methodPrefix(method);
-    const note = cellResult(wm.getCell(row, 8));
-    if (prefix.startsWith("bonus") && note && !labels[prefix]) labels[prefix] = note;
-  }
-  return labels;
-}
-
 function buildPrizeBreakdown(ws, templateWs, ctx) {
   const pay = ctx.pay;
   const wm = ctx.winMethods;
-  const free = ctx.freePlays;
   copySheetChrome(templateWs, ws);
   copyColumnWidths(templateWs, ws, 16);
   copyRowStyle(templateWs, ws, 2, 2, 2, 6);
@@ -1058,23 +1041,8 @@ function buildPrizeBreakdown(ws, templateWs, ctx) {
   setValue(ws, "D2", "Prize");
   setValue(ws, "E2", "Symbol");
   setValue(ws, "F2", "Quantity of Symbols");
-  const bonusLabels = buildBonusLabels(pay, wm);
-  if (!bonusLabels.bonusa && pay) {
-    bonusLabels.bonusa = String(cellResult(pay.getCell("B13")) || "Bonus");
-  }
   const { symbolCodes, quantities, matrix } = payTableMatrix(pay);
-  const freeplayLookup = {};
-  if (free) {
-    const max = free.rowCount || 0;
-    for (let row = 3; row <= max; row += 1) {
-      const method = cellResult(free.getCell(row, 4));
-      const rounds = cellResult(free.getCell(row, 3));
-      if (method) {
-        freeplayLookup[String(method)] = rounds;
-        freeplayLookup[String(method).toLowerCase()] = rounds;
-      }
-    }
-  }
+  const baseSymbolQty = quantities[0] || 3;
   let outRow = 3;
   const maxWm = wm.rowCount || 0;
   for (let winRow = 5; winRow <= maxWm; winRow += 1) {
@@ -1094,13 +1062,11 @@ function buildPrizeBreakdown(ws, templateWs, ctx) {
       symbol = "Instant Win";
       qty = 1;
     } else if (prefix.startsWith("bonus")) {
-      symbol = bonusLabels[prefix] || "Bonus";
-      qty = isNumeric(asNumber(cellResult(wm.getCell(winRow, 5)), NaN))
-        ? cellResult(wm.getCell(winRow, 5))
-        : 1;
+      symbol = "Bonus";
+      qty = baseSymbolQty;
     } else if (prefix.startsWith("freeplay")) {
       symbol = "Free Plays";
-      qty = freeplayLookup[method] ?? freeplayLookup[method.toLowerCase()] ?? 10;
+      qty = baseSymbolQty;
     } else {
       symbol = prefix;
       qty = isNumeric(asNumber(cellResult(wm.getCell(winRow, 5)), NaN))
@@ -1114,7 +1080,7 @@ function buildPrizeBreakdown(ws, templateWs, ctx) {
     setValue(ws, `D${outRow}`, cleanFloat(prize)).numFmt = "#,##0.00";
     setValue(ws, `E${outRow}`, symbol);
     setValue(ws, `F${outRow}`, qty);
-    if (noteValue && String(noteValue) !== String(symbol) && prefix !== "instant") {
+    if (noteValue && String(noteValue) !== String(symbol) && prefix !== "instant" && !prefix.startsWith("bonus") && !prefix.startsWith("freeplay")) {
       setValue(ws, `G${outRow}`, noteValue);
     }
     outRow += 1;

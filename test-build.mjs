@@ -91,4 +91,44 @@ if (report.winningTiers < 10) throw new Error("too few winning tiers");
 if (Math.abs(report.actualRtp - 0.83) > 0.02) {
   console.warn("RTP off cached independent sum", report.actualRtp);
 }
+
+const scrooge = path.join(
+  process.env.USERPROFILE,
+  "OneDrive - Instant Win Gaming Ltd",
+  "PPS Excels",
+  "KY",
+  "260707_KY_Scrooge(MMJ)_PPS_083_004 - test.xlsx",
+);
+const scroogeBuf = await readFile(scrooge);
+const scroogeInfo = await inspectPps(scroogeBuf, path.basename(scrooge));
+assert(scroogeInfo.schema === "MMJ", `Scrooge schema ${scroogeInfo.schema}`);
+const scroogeBuilt = await buildPps(scroogeBuf, path.basename(scrooge), { templates });
+const scroogeWb = new ExcelJS.Workbook();
+await scroogeWb.xlsx.load(scroogeBuilt.buffer);
+const scroogeDelivery = scroogeWb.getWorksheet("Delivery");
+assert(scroogeDelivery.getCell("L17").value == null, `Delivery L17 should be empty, got ${scroogeDelivery.getCell("L17").value}`);
+assert(scroogeDelivery.getCell("L23").value == null, "Delivery hit-rate check should be gone");
+const scroogeSummary = scroogeWb.getWorksheet("Summary(Delivery)");
+const jpBorder = scroogeSummary.getCell("B15").border;
+assert(jpBorder?.top?.style || jpBorder?.bottom?.style || jpBorder?.left?.style, "Summary row 15 needs borders");
+assert(scroogeSummary.getCell("B28").border?.bottom?.style, "Summary row 28 needs a bottom border");
+const scroogePb = scroogeWb.getWorksheet("Prize Breakdown");
+let bonusRow = null;
+let freeplayRow = null;
+for (let row = 3; row <= 400; row += 1) {
+  const method = scroogePb.getCell(row, 3).value;
+  if (!method) continue;
+  if (!bonusRow && String(method).startsWith("Bonus")) bonusRow = row;
+  if (!freeplayRow && String(method).toLowerCase().startsWith("freeplay")) freeplayRow = row;
+  if (bonusRow && freeplayRow) break;
+}
+assert(bonusRow, "missing Bonus prize-breakdown row");
+assert(scroogePb.getCell(bonusRow, 5).value === "Bonus", `Bonus symbol ${scroogePb.getCell(bonusRow, 5).value}`);
+assert(scroogePb.getCell(bonusRow, 6).value === 3, `Bonus qty ${scroogePb.getCell(bonusRow, 6).value}`);
+assert(freeplayRow, "missing FreePlay prize-breakdown row");
+assert(scroogePb.getCell(freeplayRow, 5).value === "Free Plays", `FreePlay symbol ${scroogePb.getCell(freeplayRow, 5).value}`);
+assert(scroogePb.getCell(freeplayRow, 6).value === 3, `FreePlay qty ${scroogePb.getCell(freeplayRow, 6).value}`);
+const scroogeOut = path.join(outDir, path.basename(scrooge).replace(/\.xlsx$/i, "_Delivery.xlsx"));
+await writeFile(scroogeOut, Buffer.from(scroogeBuilt.buffer));
+console.log("scrooge saved", scroogeOut, "bonus", bonusRow, "freeplay", freeplayRow);
 console.log("ok");
