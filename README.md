@@ -4,7 +4,7 @@ A single-page tool that adds the four Kentucky delivery tabs to an uploaded PPS 
 download a new workbook. Open the page and everything runs in the browser. The file is not
 uploaded to a server.
 
-**Live:** https://lightchu271828.github.io/ky-pps-delivery/
+**Live:** https://lightslotstudio.github.io/ky-pps-delivery/
 
 Same shape as [must-go jackpot designer](https://lightchu271828.github.io/mustgo-jackpot-designer/).
 
