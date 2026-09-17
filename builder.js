@@ -710,8 +710,10 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
       const dstRow = jpStart + (srcRow - 2);
       copyRowStyle(templateWs, ws, tpl.jpStart + (srcRow - 2), dstRow, 2, 24);
       for (let col = 2; col <= 24; col += 1) {
-        if (schema === "SSJ" && srcRow <= 7 && col >= 5) {
-          ws.getCell(dstRow, col).value = null;
+        if (srcRow <= 7 && col >= 5) {
+          const skipped = ws.getCell(dstRow, col);
+          skipped.value = null;
+          clearFillBorder(skipped);
           continue;
         }
         const srcCell = pj.getCell(srcRow, col);

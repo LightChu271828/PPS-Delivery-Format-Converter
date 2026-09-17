@@ -108,6 +108,14 @@ await scroogeWb.xlsx.load(scroogeBuilt.buffer);
 const scroogeDelivery = scroogeWb.getWorksheet("Delivery");
 assert(scroogeDelivery.getCell("L17").value == null, `Delivery L17 should be empty, got ${scroogeDelivery.getCell("L17").value}`);
 assert(scroogeDelivery.getCell("L23").value == null, "Delivery hit-rate check should be gone");
+const jpStart = scroogeBuilt.report.delivery.jpStart;
+assert(jpStart, "missing Delivery JP start");
+for (let row = jpStart; row <= jpStart + 6; row += 1) {
+  for (let col = 5; col <= 10; col += 1) {
+    const v = scroogeDelivery.getCell(row, col).value;
+    assert(v == null || v === "", `json setup leftover ${row},${col}: ${v}`);
+  }
+}
 const hitRate = scroogeDelivery.getCell("M15").value;
 assert(hitRate?.formula === "ROUND(M6/M14,2)", `hit rate formula ${JSON.stringify(hitRate)}`);
 const scroogeSummary = scroogeWb.getWorksheet("Summary(Delivery)");
