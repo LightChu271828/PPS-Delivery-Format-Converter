@@ -1,9 +1,9 @@
 {
-  "name": "ky-pps-delivery",
+  "name": "pps-delivery-format-converter",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Browser tool that adds Kentucky Lottery PPS delivery tabs to an uploaded workbook.",
+  "description": "PPS Delivery Format Converter — adds Kentucky delivery tabs to an uploaded PPS workbook.",
   "scripts": {
     "start": "python -m http.server 8765",
     "test": "node test-build.mjs"

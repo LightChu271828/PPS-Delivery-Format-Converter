@@ -1,10 +1,10 @@
-# Kentucky Lottery PPS — delivery tabs
+# PPS Delivery Format Converter
 
 A single-page tool that adds the four Kentucky delivery tabs to an uploaded PPS and lets you
 download a new workbook. Open the page and everything runs in the browser. The file is not
 uploaded to a server.
 
-**Live:** https://lightchu271828.github.io/ky-pps-delivery/
+**Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
 ## What it writes
 
@@ -37,7 +37,7 @@ multi-price Delivery packs are not inputs — upload the per-price PPS.
 ## Run locally
 
 ```powershell
-cd ky-pps-delivery
+cd PPS-Delivery-Format-Converter
 python -m http.server 8765
 ```
 
