@@ -392,6 +392,71 @@ function priceGridFor(schema) {
   return PRICE_GRIDS[schema] || DEFAULT_PRICE_GRID;
 }
 
+export function resolvePriceGrid(schema, selected) {
+  if (selected == null) return priceGridFor(schema);
+  const raw = Array.isArray(selected)
+    ? selected
+    : String(selected)
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+  const grid = [...new Set(raw.map(Number))].filter((p) => Number.isFinite(p) && p > 0).sort((a, b) => a - b);
+  if (!grid.length) throw new Error("Select at least one ticket price.");
+  priceGridBaseCol(grid);
+  return grid;
+}
+
+function methodIdentity(value) {
+  return String(value ?? "")
+    .split("|")[0]
+    .trim();
+}
+
+export function normalizeWinMethodsFreeplayFormulas(wb) {
+  const ws = requireSheet(wb, "Win Methods");
+  const maxWin = Math.min(ws.rowCount || 0, 5000);
+  const freeplayCells = [];
+  for (let row = 5; row <= maxWin; row += 1) {
+    const identity = methodIdentity(cellResult(ws.getCell(row, 3)));
+    if (!identity.toLowerCase().startsWith("freeplay")) continue;
+    freeplayCells.push({ row, identity });
+  }
+  if (!freeplayCells.length) return 0;
+
+  const free = requireSheet(wb, "Free Plays");
+  const tiers = requireSheet(wb, "Tiers");
+  const freeRows = new Map();
+  const maxFree = Math.min(free.rowCount || 0, 5000);
+  for (let row = 3; row <= maxFree; row += 1) {
+    const key = methodIdentity(cellResult(free.getCell(row, 4))).toLowerCase();
+    if (!key) continue;
+    if (freeRows.has(key)) throw new Error(`Duplicate Free Plays method: ${key}`);
+    freeRows.set(key, row);
+  }
+  const tierRows = [];
+  const maxTiers = Math.min(tiers.rowCount || 0, 5000);
+  for (let row = 3; row <= maxTiers; row += 1) {
+    const id = asNumber(cellResult(tiers.getCell(row, 2)), NaN);
+    if (isNumeric(id)) tierRows.push(row);
+  }
+  if (!tierRows.length) {
+    throw new Error("No numeric tier IDs found for FreePlay formula normalization.");
+  }
+  const first = Math.min(...tierRows);
+  const last = Math.max(...tierRows);
+  for (const { row, identity } of freeplayCells) {
+    const freeplayRow = freeRows.get(identity.toLowerCase());
+    if (freeplayRow == null) throw new Error(`Free Plays method not found: ${identity}`);
+    const cell = ws.getCell(`F${row}`);
+    const prevResult = cellResult(cell);
+    const formula =
+      `SUMPRODUCT(SUMIF('Tiers'!$B$${first}:$B$${last},'Free Plays'!E${freeplayRow}:AH${freeplayRow},` +
+      `'Tiers'!$C$${first}:$C$${last}))*G${row}`;
+    cell.value = prevResult == null ? { formula } : { formula, result: prevResult };
+  }
+  return freeplayCells.length;
+}
+
 function prizeFactor(prize, base) {
   if (!base || Math.abs(base - 1) < 1e-9) return cleanFloat(prize);
   return cleanFloat(prize / base);
@@ -1201,7 +1266,8 @@ export async function buildPps(buffer, filename, options = {}) {
     throw new Error(`${schema} was selected, but Progressive Jackpots has no jackpot rows.`);
   }
   const ssj = schema === "SSJ" ? ssjJackpots(jpEntries) : null;
-  const priceGrid = priceGridFor(schema);
+  normalizeWinMethodsFreeplayFormulas(wb);
+  const priceGrid = resolvePriceGrid(schema, options.priceGrid);
   const templateName = hasJp ? "mmj3" : "no-jp";
   const templateBuffer = templates[templateName] || templates.mmj3 || templates["no-jp"];
   if (!templateBuffer) throw new Error(`Template not loaded: ${templateName}`);

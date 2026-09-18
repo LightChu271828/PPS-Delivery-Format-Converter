@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260917-8";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260918-1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -64,6 +64,7 @@ function setFile(file) {
   state.outputName = null;
   $("fileLabel").textContent = file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : "";
   $("downloadBtn").disabled = true;
+  $("downloadBtn").classList.remove("ready");
     $("inspectBlock").classList.add("hidden");
     $("inspectBlock").hidden = true;
     $("resultBlock").classList.add("hidden");
@@ -105,7 +106,8 @@ function renderInspect(info) {
   ].join("");
   const bits = [];
   bits.push(`Ticket <b>$${info.base}</b>, pool <b>${fmt(info.quantity, 0)}</b>.`);
-  if (info.priceGrid?.length) bits.push(`Price grid: <b>${info.priceGrid.join(", ")}</b>.`);
+  const grid = selectedPriceGrid();
+  if (grid.length) bits.push(`Price grid: <b>${grid.join(", ")}</b>.`);
   if (info.jpCount) bits.push(`Jackpots: <b>${info.jpNames.join(", ") || info.jpCount}</b>.`);
   if (info.schemaError) bits.push(info.schemaError);
   if (info.existingDelivery.length) {
@@ -141,11 +143,13 @@ async function build() {
   try {
     const { buffer, report } = await buildPps(state.buffer, state.file.name, {
       templates: state.templates,
+      priceGrid: selectedPriceGrid(),
     });
     state.output = buffer;
     state.outputName = outputFilename(state.file.name);
     renderResult(report);
     $("downloadBtn").disabled = false;
+    $("downloadBtn").classList.add("ready");
     $("statusHint").textContent = `Ready: ${state.outputName}`;
     toast("Delivery tabs added");
   } catch (err) {
@@ -171,8 +175,21 @@ function download() {
   URL.revokeObjectURL(a.href);
 }
 
+function selectedPriceGrid() {
+  return [...document.querySelectorAll("#priceGridOptions input[type=checkbox]:checked")].map((el) =>
+    Number(el.value),
+  );
+}
+
+function resetPriceGrid() {
+  document.querySelectorAll("#priceGridOptions input[type=checkbox]").forEach((el) => {
+    el.checked = true;
+  });
+}
+
 function reset() {
   $("file").value = "";
+  resetPriceGrid();
   setFile(null);
   toast("Reset");
 }
@@ -211,6 +228,9 @@ $("file").addEventListener("change", () => {
 $("buildBtn").addEventListener("click", build);
 $("downloadBtn").addEventListener("click", download);
 $("resetBtn").addEventListener("click", reset);
+$("priceGridOptions").addEventListener("change", () => {
+  if (state.inspect) renderInspect(state.inspect);
+});
 
 loadTemplates().catch((err) => {
   $("statusHint").textContent = err.message;

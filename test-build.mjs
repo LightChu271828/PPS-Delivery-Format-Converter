@@ -15,6 +15,8 @@ const {
   findJackpotType,
   detectSchema,
   DEFAULT_PRICE_GRID,
+  DAILY_STREAK_PRICE_GRID,
+  resolvePriceGrid,
 } = await import("./builder.js");
 
 function assert(cond, msg) {
@@ -37,6 +39,18 @@ assert(
 );
 assert(detectSchema({ filename: "DailyStreakBooster", jpEntries: [] }) === "Daily Streak");
 assert(detectSchema({ filename: "America250", jpEntries: [] }) === "No jackpot");
+assert(JSON.stringify(resolvePriceGrid("MMJ")) === JSON.stringify(DEFAULT_PRICE_GRID), "MMJ default grid");
+assert(
+  JSON.stringify(resolvePriceGrid("Daily Streak")) === JSON.stringify(DAILY_STREAK_PRICE_GRID),
+  "Daily Streak keeps $3 unless overridden",
+);
+assert(JSON.stringify(resolvePriceGrid("MMJ", [50, 1, 0.5])) === JSON.stringify([0.5, 1, 50]), "selected prices sort");
+try {
+  resolvePriceGrid("MMJ", [0.5, 2, 5]);
+  throw new Error("expected missing $1 error");
+} catch (err) {
+  if (!/\$1 base column/.test(err.message)) throw err;
+}
 try {
   detectSchema({ filename: "mystery-jp.xlsx", jpEntries: [{ row: 11 }] });
   throw new Error("expected missing jackpot-type error");
@@ -97,7 +111,7 @@ const scrooge = path.join(
   "OneDrive - Instant Win Gaming Ltd",
   "PPS Excels",
   "KY",
-  "260707_KY_Scrooge(MMJ)_PPS_083_004 - test.xlsx",
+  "260707_KY_Scrooge(MMJ)_PPS_083_004.xlsx",
 );
 const scroogeBuf = await readFile(scrooge);
 const scroogeInfo = await inspectPps(scroogeBuf, path.basename(scrooge));
@@ -144,6 +158,20 @@ assert(scroogePb.getCell(bonusRow, 6).value === 3, `Bonus qty ${scroogePb.getCel
 assert(freeplayRow, "missing FreePlay prize-breakdown row");
 assert(scroogePb.getCell(freeplayRow, 5).value === "Free Plays", `FreePlay symbol ${scroogePb.getCell(freeplayRow, 5).value}`);
 assert(scroogePb.getCell(freeplayRow, 6).value === 3, `FreePlay qty ${scroogePb.getCell(freeplayRow, 6).value}`);
+const scroogeWm = scroogeWb.getWorksheet("Win Methods");
+let freeplayFormulas = 0;
+for (let row = 5; row <= 400; row += 1) {
+  const method = scroogeWm.getCell(row, 3).value;
+  if (!method) continue;
+  const identity = String(method).split("|")[0].trim();
+  if (!identity.toLowerCase().startsWith("freeplay")) continue;
+  const cell = scroogeWm.getCell(row, 6).value;
+  const formula = typeof cell === "object" ? String(cell.formula || "") : String(cell || "");
+  assert(/SUMPRODUCT\(SUMIF\(/i.test(formula), `FreePlay F${row} should be SUMPRODUCT, got ${formula}`);
+  assert(!formula.includes("{") && !/VLOOKUP/i.test(formula), `FreePlay F${row} still CSE/VLOOKUP: ${formula}`);
+  freeplayFormulas += 1;
+}
+assert(freeplayFormulas > 0, "expected rewritten FreePlay formulas");
 const scroogeOut = path.join(outDir, path.basename(scrooge).replace(/\.xlsx$/i, "_Delivery.xlsx"));
 await writeFile(scroogeOut, Buffer.from(scroogeBuilt.buffer));
 console.log("scrooge saved", scroogeOut, "bonus", bonusRow, "freeplay", freeplayRow);
@@ -153,7 +181,7 @@ const fiesta = path.join(
   "OneDrive - Instant Win Gaming Ltd",
   "PPS Excels",
   "KY",
-  "260710_KY_FiestaPepperPayout(SSJ)_PPS_083_004 - test.xlsx",
+  "260710_KY_FiestaPepperPayout(SSJ)_PPS_083_004.xlsx",
 );
 const fiestaBuf = await readFile(fiesta);
 const fiestaInfo = await inspectPps(fiestaBuf, path.basename(fiesta));

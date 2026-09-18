@@ -95,6 +95,35 @@
       cursor: default;
     }
 
+    .pricegrid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      margin: 0 0 14px;
+    }
+    .pricegrid > span {
+      font-size: 11px;
+      color: var(--text-faint);
+      margin-right: 4px;
+    }
+    .pricegrid #priceGridOptions { display: contents; }
+    .pricegrid label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-dim);
+      user-select: none;
+    }
+
+    #downloadBtn.ready:not(:disabled) {
+      background: var(--ok);
+      border-color: var(--ok);
+      color: #fff;
+    }
+    #downloadBtn.ready:not(:disabled):hover { filter: brightness(1.08); }
+
     .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); }
     .panel-h {
       padding: 8px 13px; border-bottom: 1px solid var(--line); font-size: 12px;
@@ -205,9 +234,23 @@
           <button type="button" disabled title="Coming soon">MI</button>
           <button type="button" disabled title="Coming soon">GA</button>
           <button type="button" class="on" aria-pressed="true">KY</button>
+          <button type="button" disabled title="Coming soon">DC</button>
           <button type="button" disabled title="Coming soon">ALC</button>
           <button type="button" disabled title="Coming soon">BCLC</button>
           <button type="button" disabled title="Coming soon">OLG</button>
+        </div>
+        <div class="pricegrid" id="priceGrid" aria-label="Price grid">
+          <span>Price grid</span>
+          <span id="priceGridOptions">
+            <label><input type="checkbox" value="0.5" checked> 0.5</label>
+            <label><input type="checkbox" value="1" checked> 1</label>
+            <label><input type="checkbox" value="2" checked> 2</label>
+            <label><input type="checkbox" value="5" checked> 5</label>
+            <label><input type="checkbox" value="10" checked> 10</label>
+            <label><input type="checkbox" value="20" checked> 20</label>
+            <label><input type="checkbox" value="30" checked> 30</label>
+            <label><input type="checkbox" value="50" checked> 50</label>
+          </span>
         </div>
         <div class="drop" id="drop" tabindex="0">
           <strong>Drop a PPS .xlsx here, or click to browse</strong>
@@ -218,7 +261,7 @@
 
         <div class="rebuild">
           <button type="button" class="primary" id="buildBtn" disabled>Add Delivery tabs</button>
-          <button type="button" id="downloadBtn" disabled>Download workbook</button>
+          <button type="button" id="downloadBtn" disabled>Download PPS</button>
           <span class="hint" id="statusHint">Choose a PPS to inspect it before building.</span>
         </div>
       </div>
@@ -265,6 +308,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20260917-8"></script>
+  <script type="module" src="app.js?v=20260918-1"></script>
 </body>
 </html>
