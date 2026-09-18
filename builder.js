@@ -13,6 +13,8 @@ export const DELIVERY_SHEETS = [
   "Prize Breakdown",
 ];
 
+export const DELIVERY_TAB_COLOR = { theme: 5, tint: 0.7999816888943144 };
+
 export const JACKPOT_TYPES = ["ChatterJP", "MMJ3", "MMJ", "SSJ"];
 export const DEFAULT_PRICE_GRID = [0.5, 1, 2, 5, 10, 20, 30, 50];
 export const DAILY_STREAK_PRICE_GRID = [0.5, 1, 2, 3, 5, 10, 20, 30, 50];
@@ -618,6 +620,14 @@ function insertSheet(wb, name) {
   const existing = sheet(wb, name);
   if (existing) wb.removeWorksheet(existing.id);
   return wb.addWorksheet(name);
+}
+
+function applyDeliveryTabColors(wb) {
+  for (const name of DELIVERY_SHEETS) {
+    const ws = sheet(wb, name);
+    if (!ws) continue;
+    ws.properties = { ...ws.properties, tabColor: { ...DELIVERY_TAB_COLOR } };
+  }
 }
 
 function orderSheets(wb) {
@@ -1333,6 +1343,7 @@ export async function buildPps(buffer, filename, options = {}) {
   const dist = buildSummaryGrid(summaryWs, summaryTemplate, ctx);
   const prizeLast = buildPrizeBreakdown(prizeWs, prizeTemplate, ctx);
   orderSheets(wb);
+  applyDeliveryTabColors(wb);
 
   wb.calcProperties = wb.calcProperties || {};
   wb.calcProperties.fullCalcOnLoad = true;

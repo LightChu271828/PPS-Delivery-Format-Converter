@@ -18,10 +18,22 @@ const {
   DAILY_STREAK_PRICE_GRID,
   resolvePriceGrid,
   priceGridBaseCol,
+  DELIVERY_SHEETS,
+  DELIVERY_TAB_COLOR,
 } = await import("./builder.js");
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
+}
+
+function assertDeliveryTabColors(wb, label) {
+  for (const name of DELIVERY_SHEETS) {
+    const tab = wb.getWorksheet(name)?.properties?.tabColor;
+    assert(
+      tab?.theme === DELIVERY_TAB_COLOR.theme && Math.abs(tab?.tint - DELIVERY_TAB_COLOR.tint) < 1e-9,
+      `${label} ${name} tab color ${JSON.stringify(tab)}`,
+    );
+  }
 }
 
 assert(findJackpotType("260916_KY_XtheMoneySSJ($2)") === "SSJ", "SSJ from filename");
@@ -93,6 +105,7 @@ const summaryPrices = [];
 for (let col = 2; col <= 9; col += 1) summaryPrices.push(summary.getCell(1, col).value);
 assert(JSON.stringify(summaryPrices) === JSON.stringify(DEFAULT_PRICE_GRID), `summary prices ${summaryPrices}`);
 const delivery = check.getWorksheet("Delivery");
+assertDeliveryTabColors(check, "XtheMoney");
 const lastWin = report.delivery.lastWinRow;
 const c4 = delivery.getCell("C4").value;
 const f4 = delivery.getCell("F4").value;
@@ -117,6 +130,7 @@ assert(scroogeInfo.schema === "MMJ", `Scrooge schema ${scroogeInfo.schema}`);
 const scroogeBuilt = await buildPps(scroogeBuf, path.basename(scrooge), { templates });
 const scroogeWb = new ExcelJS.Workbook();
 await scroogeWb.xlsx.load(scroogeBuilt.buffer);
+assertDeliveryTabColors(scroogeWb, "Scrooge");
 const scroogeDelivery = scroogeWb.getWorksheet("Delivery");
 assert(scroogeDelivery.getCell("L17").value == null, `Delivery L17 should be empty, got ${scroogeDelivery.getCell("L17").value}`);
 assert(scroogeDelivery.getCell("L23").value == null, "Delivery hit-rate check should be gone");
@@ -217,6 +231,7 @@ const fortuneBuilt = await buildPps(fortuneBuf, path.basename(fortune), { templa
 assert(JSON.stringify(fortuneBuilt.report.priceGrid) === JSON.stringify(subset), "Fortune subset grid");
 const fortuneWb = new ExcelJS.Workbook();
 await fortuneWb.xlsx.load(fortuneBuilt.buffer);
+assertDeliveryTabColors(fortuneWb, "Fortune");
 const fortuneOdds = fortuneWb.getWorksheet("Odds Table");
 const fortunePrices = [];
 for (let col = 2; col <= 6; col += 1) fortunePrices.push(fortuneOdds.getCell(1, col).value);
