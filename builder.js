@@ -42,6 +42,10 @@ const CONFIDENTIAL =
   "confidentiality obligations or non-disclosure agreements between the parties.\n" +
   "All other use is strictly prohibited.";
 
+const HELV_8 = { name: "Helv", size: 8 };
+const ACCOUNTING_2 = "#,##0.00_);[Red](#,##0.00)";
+const ACCOUNTING_0 = "#,##0_);[Red](#,##0)";
+
 const X_SUFFIX = /\s+x\s+\d+(?:\.\d+)?\s*$/i;
 const NO_FILL = { type: "pattern", pattern: "none" };
 const NO_BORDER = {};
@@ -646,6 +650,39 @@ function orderSheets(wb) {
   wb._worksheets = sparse;
 }
 
+function applyConfidentialNotice(ws, range) {
+  const start = String(range).split(":")[0];
+  setValue(ws, start, CONFIDENTIAL);
+  try {
+    ws.mergeCells(range);
+  } catch {
+    /* already merged */
+  }
+  const cell = ws.getCell(start);
+  cell.font = { ...HELV_8, bold: true };
+  cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+}
+
+function applySsjMetadataFormats(ws) {
+  for (let row = 6; row <= 15; row += 1) {
+    const label = ws.getCell(`L${row}`);
+    const value = ws.getCell(`M${row}`);
+    if (label.value) label.font = { ...HELV_8, bold: true };
+    if (value.value != null && value.value !== "") value.font = { ...HELV_8, bold: false };
+  }
+  ws.getCell("M6").numFmt = "#,##0";
+  ws.getCell("M6").alignment = { horizontal: "right" };
+  ws.getCell("M7").numFmt = ACCOUNTING_2;
+  ws.getCell("M8").numFmt = ACCOUNTING_2;
+  ws.getCell("M9").numFmt = ACCOUNTING_2;
+  ws.getCell("M10").numFmt = "0.00%";
+  ws.getCell("M11").numFmt = "0.00%";
+  ws.getCell("M12").numFmt = "0.00%";
+  ws.getCell("M13").numFmt = "0.00%";
+  ws.getCell("M14").numFmt = ACCOUNTING_0;
+  ws.getCell("M15").numFmt = ACCOUNTING_2;
+}
+
 function groupPrizes(rows, prizeKey) {
   const grouped = new Map();
   for (const item of rows) {
@@ -749,7 +786,9 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
   ws.getCell("M11").numFmt = "0.00%";
 
   if (hasJp) {
-    setValue(ws, "N11", '=IF(ABS(M11-M10)<1E-10,"okay","error")');
+    if (schema !== "SSJ") {
+      setValue(ws, "N11", '=IF(ABS(M11-M10)<1E-10,"okay","error")');
+    }
     setValue(ws, "L12", "JP RTP:");
     if (schema === "SSJ") {
       setValue(ws, "M12", `=C${jpStart + 12}+C${jpStart + 19}`);
@@ -766,12 +805,8 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     ws.getCell("M13").numFmt = "0.00%";
     ws.getCell("M15").numFmt = "0.00";
     if (schema === "SSJ") {
-      setValue(ws, "L17", CONFIDENTIAL);
-      try {
-        ws.mergeCells("L17:O21");
-      } catch {
-        /* already merged */
-      }
+      applySsjMetadataFormats(ws);
+      applyConfidentialNotice(ws, "L17:O21");
     } else {
       for (let row = 17; row <= 23; row += 1) {
         for (const col of ["L", "M", "N", "O"]) {
@@ -788,7 +823,7 @@ function buildDelivery(ws, templateWs, src, rows, ctx) {
     setValue(ws, "M13", "=ROUND(M6/M12,2)");
     ws.getCell("M13").numFmt = "0.00";
     const l16 = cellResult(templateWs.getCell("L16"));
-    if (l16) setValue(ws, "L16", l16);
+    if (l16) applyConfidentialNotice(ws, "L16:O20");
   }
 
   if (hasJp && pj) {

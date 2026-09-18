@@ -201,6 +201,16 @@ assert(fiestaInfo.schema === "SSJ", `Fiesta schema ${fiestaInfo.schema}`);
 assert(fiestaInfo.zeroFrequency?.length === 11, `Fiesta zero-frequency ${fiestaInfo.zeroFrequency?.length}`);
 const fiestaBuilt = await buildPps(fiestaBuf, path.basename(fiesta), { templates });
 assert(fiestaBuilt.report.winningTiers === fiestaInfo.winningTiers, "Fiesta inspect/build tier mismatch");
+const fiestaWb = new ExcelJS.Workbook();
+await fiestaWb.xlsx.load(fiestaBuilt.buffer);
+const fiestaDelivery = fiestaWb.getWorksheet("Delivery");
+const fiestaNotice = fiestaDelivery.getCell("L17");
+assert(String(fiestaNotice.value || "").includes("strictly confidential"), "Fiesta missing confidential notice");
+assert(fiestaNotice.alignment?.wrapText === true, `Fiesta notice wrap ${JSON.stringify(fiestaNotice.alignment)}`);
+assert(fiestaNotice.alignment?.horizontal === "center", "Fiesta notice should be centered");
+assert(fiestaNotice.font?.size === 8 && fiestaNotice.font?.bold, `Fiesta notice font ${JSON.stringify(fiestaNotice.font)}`);
+assert(fiestaDelivery.getCell("N11").value == null, "SSJ should not write the okay/error check");
+assert(fiestaDelivery.getCell("M6").numFmt === "#,##0", `Fiesta M6 format ${fiestaDelivery.getCell("M6").numFmt}`);
 const fiestaOut = path.join(outDir, path.basename(fiesta).replace(/\.xlsx$/i, "_Delivery.xlsx"));
 await writeFile(fiestaOut, Buffer.from(fiestaBuilt.buffer));
 console.log("fiesta saved", fiestaOut, "tiers", fiestaBuilt.report.winningTiers, "skipped", fiestaInfo.zeroFrequency.length);
@@ -222,7 +232,7 @@ const fortune = path.join(
   "OneDrive - Instant Win Gaming Ltd",
   "PPS Excels",
   "KY",
-  "260601_KY_FirstClassFortune_PPS_085 - test.xlsx",
+  "260601_KY_FirstClassFortune_PPS_085.xlsx",
 );
 const fortuneBuf = await readFile(fortune);
 const fortuneInfo = await inspectPps(fortuneBuf, path.basename(fortune));
@@ -246,6 +256,10 @@ assert(
 const fortuneSummary = fortuneWb.getWorksheet("Summary(Delivery)");
 assert(fortuneSummary.getCell("B1").value === 5, "Fortune summary starts at $5");
 assert(typeof fortuneSummary.getCell("B2").value === "number", `Fortune summary top prize ${fortuneSummary.getCell("B2").value}`);
+const fortuneNotice = fortuneWb.getWorksheet("Delivery").getCell("L16");
+assert(String(fortuneNotice.value || "").includes("strictly confidential"), "Fortune missing confidential notice");
+assert(fortuneNotice.alignment?.wrapText === true, `Fortune notice wrap ${JSON.stringify(fortuneNotice.alignment)}`);
+assert(fortuneNotice.alignment?.horizontal === "center", "Fortune notice should be centered");
 const fortuneOut = path.join(outDir, path.basename(fortune).replace(/\.xlsx$/i, "_Delivery.xlsx"));
 await writeFile(fortuneOut, Buffer.from(fortuneBuilt.buffer));
 console.log("fortune saved", fortuneOut, "grid", fortuneBuilt.report.priceGrid);
