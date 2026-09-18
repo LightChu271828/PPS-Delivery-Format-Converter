@@ -402,7 +402,6 @@ export function resolvePriceGrid(schema, selected) {
         .filter(Boolean);
   const grid = [...new Set(raw.map(Number))].filter((p) => Number.isFinite(p) && p > 0).sort((a, b) => a - b);
   if (!grid.length) throw new Error("Select at least one ticket price.");
-  priceGridBaseCol(grid);
   return grid;
 }
 
@@ -523,10 +522,18 @@ function freqNumber(freq, row) {
   return asNumber(cellResult(freq.getCell(row, 14)), NaN);
 }
 
-function priceGridBaseCol(grid) {
+export function priceGridBaseCol(grid) {
+  if (!Array.isArray(grid) || !grid.length) throw new Error("Select at least one ticket price.");
   const idx = grid.findIndex((p) => Math.abs(p - 1) < 1e-9);
-  if (idx < 0) throw new Error("The price grid must contain a $1 base column.");
-  return idx + 2;
+  return (idx < 0 ? 0 : idx) + 2;
+}
+
+function scaleFromBase(baseLetter, srcRow, destCol, priceRow) {
+  return `=${baseLetter}${srcRow}*${destCol}$${priceRow}/${baseLetter}$${priceRow}`;
+}
+
+function scaleOddsFromBase(baseLetter, srcRow, destCol, priceRow) {
+  return `=${baseLetter}${srcRow}*${baseLetter}$${priceRow}/${destCol}$${priceRow}`;
 }
 
 function findDeliveryTemplateRows(templateWs, requireJp) {
@@ -842,7 +849,9 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
   const prizes = groupPrizes(rows, "factor");
   const grid = ctx.priceGrid;
   const priceCols = pairedPriceCols(grid);
-  const extraPriceCols = priceCols.filter((col) => col > 4);
+  const unitCol = priceCols[0];
+  const unitLetter = colLetter(unitCol);
+  const unitOddsLetter = colLetter(unitCol + 1);
   const maxCol = priceCols[priceCols.length - 1] + 1;
   const jpList = ctx.ssj?.oddsOrder || ctx.jpEntries;
   copySheetChrome(templateWs, ws);
@@ -857,15 +866,11 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
   jpList.forEach((jp, offset) => {
     const row = 2 + offset;
     setValue(ws, `A${row}`, jp.label);
-    setValue(ws, `B${row}`, currencyStar(jp.prize));
-    setValue(ws, `D${row}`, currencyStar(jp.prize));
-    setValue(ws, `E${row}`, `='Progressive Jackpots'!$H$${jp.row}`);
-    setValue(ws, `C${row}`, `=E${row}*($D$1/$B$1)`);
-    extraPriceCols.forEach((priceCol) => {
+    priceCols.forEach((priceCol) => {
       const p = colLetter(priceCol);
       const o = colLetter(priceCol + 1);
-      setValue(ws, `${p}${row}`, cellResult(ws.getCell(`D${row}`)) ?? ws.getCell(`D${row}`).value);
-      setValue(ws, `${o}${row}`, `=E${row}/${p}$1`);
+      setValue(ws, `${p}${row}`, currencyStar(jp.prize));
+      setValue(ws, `${o}${row}`, `='Progressive Jackpots'!$H$${jp.row}/${p}$1`);
     });
   });
   const firstRow = 2 + jpList.length;
@@ -873,23 +878,32 @@ function buildOddsMmj3(ws, templateWs, rows, delivery, ctx) {
   prizes.forEach((prize, offset) => {
     const row = firstRow + offset;
     if (offset === 0) setValue(ws, `A${row}`, "Prize");
-    setValue(ws, `D${row}`, prize);
-    setValue(ws, `E${row}`, `='Delivery'!$M$6/SUMIF('Delivery'!$D$4:$D$${lastWin},D${row},'Delivery'!$F$4:$F$${lastWin})`);
-    setValue(ws, `B${row}`, `=D${row}*$B$1`);
-    setValue(ws, `C${row}`, `=E${row}`);
-    extraPriceCols.forEach((priceCol) => {
+    priceCols.forEach((priceCol, idx) => {
       const p = colLetter(priceCol);
       const o = colLetter(priceCol + 1);
-      setValue(ws, `${p}${row}`, `=D${row}*${p}$1`);
-      setValue(ws, `${o}${row}`, `=E${row}`);
+      if (idx === 0) {
+        setValue(ws, `${p}${row}`, cleanFloat(prize * grid[0]));
+        setValue(
+          ws,
+          `${o}${row}`,
+          `='Delivery'!$M$6/SUMIF('Delivery'!$D$4:$D$${lastWin},${p}${row}/${p}$1,'Delivery'!$F$4:$F$${lastWin})`,
+        );
+      } else {
+        setValue(ws, `${p}${row}`, scaleFromBase(unitLetter, row, p, 1));
+        setValue(ws, `${o}${row}`, `=${unitOddsLetter}${row}`);
+      }
     });
   });
   const nonwinRow = firstRow + prizes.length;
-  priceCols.forEach((priceCol) => {
+  priceCols.forEach((priceCol, idx) => {
     const p = colLetter(priceCol);
     const o = colLetter(priceCol + 1);
     setValue(ws, `${p}${nonwinRow}`, "NON WINNING");
-    setValue(ws, `${o}${nonwinRow}`, priceCol === 4 ? `='Delivery'!$M$6/'Delivery'!$F$${delivery.nonwinRow}` : `=E${nonwinRow}`);
+    setValue(
+      ws,
+      `${o}${nonwinRow}`,
+      idx === 0 ? `='Delivery'!$M$6/'Delivery'!$F$${delivery.nonwinRow}` : `=${unitOddsLetter}${nonwinRow}`,
+    );
   });
   reflowOddsJp(ws, templateWs, jpList.length, firstRow, nonwinRow, maxCol);
   for (let row = 1; row <= nonwinRow; row += 1) {
@@ -915,13 +929,17 @@ function buildOddsNoJp(ws, templateWs, rows, delivery, ctx) {
   prizes.forEach((prize, offset) => {
     const row = 2 + offset;
     if (offset === 0) setValue(ws, `A${row}`, "Prize");
-    setValue(ws, { row, col: baseCol }, prize);
+    setValue(ws, { row, col: baseCol }, cleanFloat(prize * grid[baseCol - 2]));
     grid.forEach((_, idx) => {
       const col = idx + 2;
       if (col === baseCol) return;
-      setValue(ws, { row, col }, `=${baseLetter}${row}*${colLetter(col)}$1`);
+      setValue(ws, { row, col }, scaleFromBase(baseLetter, row, colLetter(col), 1));
     });
-    setValue(ws, `${oddsLetter}${row}`, `='Delivery'!$M$6/SUMIF('Delivery'!$D$4:$D$${lastWin},${baseLetter}${row},'Delivery'!$F$4:$F$${lastWin})`);
+    setValue(
+      ws,
+      `${oddsLetter}${row}`,
+      `='Delivery'!$M$6/SUMIF('Delivery'!$D$4:$D$${lastWin},${baseLetter}${row}/${baseLetter}$1,'Delivery'!$F$4:$F$${lastWin})`,
+    );
   });
   const nonwinRow = 2 + prizes.length;
   grid.forEach((_, idx) => setValue(ws, { row: nonwinRow, col: idx + 2 }, "NON WINNING"));
@@ -964,11 +982,12 @@ function buildSummaryGrid(ws, templateWs, ctx) {
     copyRowStyle(templateWs, ws, i + 1, i + 1, 1, grid.length + 1);
     setValue(ws, `A${i + 1}`, label);
   });
+  const basePrice = grid[baseCol - 2];
   grid.forEach((price, idx) => {
     const col = colLetter(idx + 2);
     const isBase = idx + 2 === baseCol;
     setValue(ws, { row: 1, col: idx + 2 }, price);
-    setValue(ws, `${col}2`, isBase ? ctx.topPrize : `=${baseLetter}$2*${col}$1`);
+    setValue(ws, `${col}2`, isBase ? cleanFloat(asNumber(ctx.topPrize) * basePrice) : scaleFromBase(baseLetter, 2, col, 1));
     setValue(ws, `${col}3`, "v1");
     setValue(ws, `${col}4`, isBase ? ctx.rtp : `=${baseLetter}$4`);
     setValue(ws, `${col}5`, isBase ? dist.breakeven : `=${baseLetter}$5`);
@@ -1005,9 +1024,9 @@ function buildSummaryGrid(ws, templateWs, ctx) {
       const col = colLetter(idx + 2);
       const isBase = idx + 2 === baseCol;
       setValue(ws, `${col}16`, cleanFloat(cellResult(ctx.pj.getCell("C2"))));
-      setValue(ws, `${col}17`, isBase ? jp1.wins : `=${baseLetter}$17*${col}$15`);
+      setValue(ws, `${col}17`, isBase ? cleanFloat(asNumber(jp1.wins) * basePrice) : scaleFromBase(baseLetter, 17, col, 15));
       setValue(ws, `${col}18`, `=${col}17/${col}15`);
-      setValue(ws, `${col}19`, isBase ? jp1.odds : `=${baseLetter}$19/${col}$15`);
+      setValue(ws, `${col}19`, isBase ? cleanFloat(asNumber(jp1.odds) / basePrice) : scaleOddsFromBase(baseLetter, 19, col, 15));
       setValue(ws, `${col}20`, `=${col}16*${col}15`);
       setValue(ws, `${col}21`, isBase ? "='Progressive Jackpots'!$C$14" : `=${baseLetter}$21`);
       setValue(ws, `${col}22`, isBase ? jp1.prize : `=${baseLetter}$22`);
@@ -1040,12 +1059,12 @@ function buildSummaryGrid(ws, templateWs, ctx) {
     const col = colLetter(idx + 2);
     const isBase = idx + 2 === baseCol;
     setValue(ws, `${col}16`, cleanFloat(cellResult(ctx.pj.getCell("C2"))));
-    setValue(ws, `${col}17`, isBase ? jp1.wins : `=${baseLetter}$17*${col}$15`);
-    setValue(ws, `${col}18`, isBase ? jp2.wins : `=${baseLetter}$18*${col}$15`);
+    setValue(ws, `${col}17`, isBase ? cleanFloat(asNumber(jp1.wins) * basePrice) : scaleFromBase(baseLetter, 17, col, 15));
+    setValue(ws, `${col}18`, isBase ? cleanFloat(asNumber(jp2.wins) * basePrice) : scaleFromBase(baseLetter, 18, col, 15));
     setValue(ws, `${col}19`, `=${col}17/${col}15`);
     setValue(ws, `${col}20`, `=${col}18/${col}15`);
-    setValue(ws, `${col}21`, isBase ? jp1.odds : `=${baseLetter}$21/${col}$15`);
-    setValue(ws, `${col}22`, isBase ? jp2.odds : `=${baseLetter}$22/${col}$15`);
+    setValue(ws, `${col}21`, isBase ? cleanFloat(asNumber(jp1.odds) / basePrice) : scaleOddsFromBase(baseLetter, 21, col, 15));
+    setValue(ws, `${col}22`, isBase ? cleanFloat(asNumber(jp2.odds) / basePrice) : scaleOddsFromBase(baseLetter, 22, col, 15));
     setValue(ws, `${col}23`, `=${col}16*${col}15`);
     setValue(ws, `${col}24`, isBase ? "='Progressive Jackpots'!$C$14" : `=${baseLetter}$24`);
     setValue(ws, `${col}25`, isBase ? jp1.prize : `=${baseLetter}$25`);

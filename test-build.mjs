@@ -17,6 +17,7 @@ const {
   DEFAULT_PRICE_GRID,
   DAILY_STREAK_PRICE_GRID,
   resolvePriceGrid,
+  priceGridBaseCol,
 } = await import("./builder.js");
 
 function assert(cond, msg) {
@@ -45,12 +46,9 @@ assert(
   "Daily Streak keeps $3 unless overridden",
 );
 assert(JSON.stringify(resolvePriceGrid("MMJ", [50, 1, 0.5])) === JSON.stringify([0.5, 1, 50]), "selected prices sort");
-try {
-  resolvePriceGrid("MMJ", [0.5, 2, 5]);
-  throw new Error("expected missing $1 error");
-} catch (err) {
-  if (!/\$1 base column/.test(err.message)) throw err;
-}
+assert(JSON.stringify(resolvePriceGrid("MMJ", [5, 10, 20, 30, 50])) === JSON.stringify([5, 10, 20, 30, 50]), "grid without $1");
+assert(priceGridBaseCol(DEFAULT_PRICE_GRID) === 3, "$1 stays the base when present");
+assert(priceGridBaseCol([5, 10, 20, 30, 50]) === 2, "first selected price is the base without $1");
 try {
   detectSchema({ filename: "mystery-jp.xlsx", jpEntries: [{ row: 11 }] });
   throw new Error("expected missing jackpot-type error");
@@ -192,4 +190,48 @@ assert(fiestaBuilt.report.winningTiers === fiestaInfo.winningTiers, "Fiesta insp
 const fiestaOut = path.join(outDir, path.basename(fiesta).replace(/\.xlsx$/i, "_Delivery.xlsx"));
 await writeFile(fiestaOut, Buffer.from(fiestaBuilt.buffer));
 console.log("fiesta saved", fiestaOut, "tiers", fiestaBuilt.report.winningTiers, "skipped", fiestaInfo.zeroFrequency.length);
+
+const subset = [5, 10, 20, 30, 50];
+const subsetBuilt = await buildPps(buf, path.basename(source), { templates, priceGrid: subset });
+assert(JSON.stringify(subsetBuilt.report.priceGrid) === JSON.stringify(subset), "SSJ subset grid");
+const subsetWb = new ExcelJS.Workbook();
+await subsetWb.xlsx.load(subsetBuilt.buffer);
+const subsetOdds = subsetWb.getWorksheet("Odds Table");
+const subsetOddsPrices = [];
+for (let col = 2; col <= 10; col += 2) subsetOddsPrices.push(subsetOdds.getCell(1, col).value);
+assert(JSON.stringify(subsetOddsPrices) === JSON.stringify(subset), `SSJ subset odds ${subsetOddsPrices}`);
+const subsetJpOdds = subsetOdds.getCell("C2").value;
+assert(/Progressive Jackpots/.test(subsetJpOdds?.formula || ""), `JP odds ${JSON.stringify(subsetJpOdds)}`);
+
+const fortune = path.join(
+  process.env.USERPROFILE,
+  "OneDrive - Instant Win Gaming Ltd",
+  "PPS Excels",
+  "KY",
+  "260601_KY_FirstClassFortune_PPS_085 - test.xlsx",
+);
+const fortuneBuf = await readFile(fortune);
+const fortuneInfo = await inspectPps(fortuneBuf, path.basename(fortune));
+assert(fortuneInfo.schema === "No jackpot", `Fortune schema ${fortuneInfo.schema}`);
+const fortuneBuilt = await buildPps(fortuneBuf, path.basename(fortune), { templates, priceGrid: subset });
+assert(JSON.stringify(fortuneBuilt.report.priceGrid) === JSON.stringify(subset), "Fortune subset grid");
+const fortuneWb = new ExcelJS.Workbook();
+await fortuneWb.xlsx.load(fortuneBuilt.buffer);
+const fortuneOdds = fortuneWb.getWorksheet("Odds Table");
+const fortunePrices = [];
+for (let col = 2; col <= 6; col += 1) fortunePrices.push(fortuneOdds.getCell(1, col).value);
+assert(JSON.stringify(fortunePrices) === JSON.stringify(subset), `Fortune odds prices ${fortunePrices}`);
+const fortunePrize = fortuneOdds.getCell("B2").value;
+assert(typeof fortunePrize === "number" && fortunePrize > 0, `Fortune $5 prize ${fortunePrize}`);
+const fortuneScaled = fortuneOdds.getCell("C2").value;
+assert(
+  /B2\*C\$1\/B\$1/.test(fortuneScaled?.formula || ""),
+  `Fortune scaled prize ${JSON.stringify(fortuneScaled)}`,
+);
+const fortuneSummary = fortuneWb.getWorksheet("Summary(Delivery)");
+assert(fortuneSummary.getCell("B1").value === 5, "Fortune summary starts at $5");
+assert(typeof fortuneSummary.getCell("B2").value === "number", `Fortune summary top prize ${fortuneSummary.getCell("B2").value}`);
+const fortuneOut = path.join(outDir, path.basename(fortune).replace(/\.xlsx$/i, "_Delivery.xlsx"));
+await writeFile(fortuneOut, Buffer.from(fortuneBuilt.buffer));
+console.log("fortune saved", fortuneOut, "grid", fortuneBuilt.report.priceGrid);
 console.log("ok");

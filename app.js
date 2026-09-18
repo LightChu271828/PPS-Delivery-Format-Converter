@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260918-1";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20260918-2";
 
 const $ = (id) => document.getElementById(id);
 

@@ -26,7 +26,7 @@ Jackpot type is read from the filename and Win Methods, and shown with that exac
 | Daily Streak | No jackpot data, Daily Streak in the filename / labels | No-JP grid including $3 |
 | No jackpot | Blank Progressive Jackpots | Default 8-price grid |
 
-Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`, all selected. Uncheck prices you do not want; the grid must still include `$1`. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, the build stops until the filename names the type.
+Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`, all selected. Uncheck any prices you do not want; Odds and Summary scale from `$1` when it is selected, otherwise from the first remaining price. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, the build stops until the filename names the type.
 
 Win Methods FreePlay prizes are rewritten to ordinary `SUMPRODUCT(SUMIF(...))` formulas matched by Free Plays method identity, not CSE `{=SUM(VLOOKUP(...))}`.
 
