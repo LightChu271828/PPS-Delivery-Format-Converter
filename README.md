@@ -1,19 +1,17 @@
 # PPS Delivery Format Converter
 
-A single-page tool that adds the four Kentucky delivery tabs to an uploaded PPS and lets you
-download a new workbook. Open the page and everything runs in the browser. The file is not
-uploaded to a server.
+A single-page tool that adds lottery Delivery tabs to an uploaded PPS and lets you download a
+new workbook. Open the page and everything runs in the browser. The file is not uploaded to a
+server.
 
 **Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
-## What it writes
+Pick the lottery first. Kentucky is a four-tab pack. NC, GA, PA, and NH write one Delivery sheet.
 
-- `Delivery`
-- `Odds Table`
-- `Summary(Delivery)`
-- `Prize Breakdown`
+## Kentucky
 
-Source sheets stay. Existing delivery tabs are replaced.
+Writes `Delivery`, `Odds Table`, `Summary(Delivery)`, and `Prize Breakdown`. Source sheets stay.
+Existing delivery tabs are replaced.
 
 Jackpot type is read from the filename and Win Methods, and shown with that exact spelling:
 
@@ -26,9 +24,31 @@ Jackpot type is read from the filename and Win Methods, and shown with that exac
 | Daily Streak | No jackpot data, Daily Streak in the filename / labels | No-JP grid including $3 |
 | No jackpot | Blank Progressive Jackpots | Default 8-price grid |
 
-Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`, all selected. Uncheck any prices you do not want; Odds and Summary scale from `$1` when it is selected, otherwise from the first remaining price. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, the build stops until the filename names the type.
+Default ticket prices are `0.5, 1, 2, 5, 10, 20, 30, 50`, all selected. Uncheck any prices you do
+not want; Odds and Summary scale from `$1` when it is selected, otherwise from the first remaining
+price. A one-price SSJ pack such as X the Money is the exception, not the site default. If jackpot
+rows exist but none of MMJ / MMJ3 / SSJ / ChatterJP is in the filename or Win Methods, the build
+stops until the filename names the type.
 
-Win Methods FreePlay prizes are rewritten to ordinary `SUMPRODUCT(SUMIF(...))` formulas matched by Free Plays method identity, not CSE `{=SUM(VLOOKUP(...))}`.
+Win Methods FreePlay prizes are rewritten to ordinary `SUMPRODUCT(SUMIF(...))` formulas matched by
+Free Plays method identity, not CSE `{=SUM(VLOOKUP(...))}`.
+
+## NC, GA, PA, NH
+
+One `Delivery` sheet. The price grid is not used. PA and NH use the Georgia layout.
+
+| Lottery | Layout |
+| --- | --- |
+| NC | Frequency order. Summary in K/L. Bonus / Freeplay show `-` when that category is missing. |
+| GA, PA, NH | Winning tiers sorted by prize, smallest first. Consolidated 1-in-X and `% of Prize Fund`. Bonus and Freeplay lines are always present. |
+
+Jackpot RTP is linked from `Progressive Jackpots` when Frequency has a JP RTP row. Output name:
+
+`{yymmdd}_{JUR}_{Game}(Delivery)_PPS_{rtp}.xlsx`
+
+Number formats are plain `#,##0`, `#,##0.00`, and `0.00%`. Accounting padding is stripped.
+
+Buy-feature packs are still one workbook per game for now.
 
 ## What you need in the file
 

@@ -210,9 +210,9 @@
       <div>
         <h1>PPS Delivery Format Converter</h1>
         <p>
-          Upload a Kentucky PPS. This page adds <code>Delivery</code>, <code>Odds Table</code>,
-          <code>Summary(Delivery)</code>, and <code>Prize Breakdown</code> from Frequency, then
-          lets you download a new workbook. Source tabs stay intact. Everything runs in this page.
+          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. NC keeps Frequency
+          order on one Delivery sheet. GA, PA, and NH sort winning tiers by prize. Source tabs stay
+          intact. Everything runs in this page.
         </p>
       </div>
       <div class="btnrow">
@@ -229,11 +229,12 @@
         <div class="markets" role="group" aria-label="Lottery">
           <span>Lottery</span>
           <button type="button" disabled title="Coming soon">VA</button>
-          <button type="button" disabled title="Coming soon">NC</button>
-          <button type="button" disabled title="Coming soon">PA</button>
+          <button type="button" data-lottery="NC" aria-pressed="false">NC</button>
+          <button type="button" data-lottery="PA" aria-pressed="false">PA</button>
+          <button type="button" data-lottery="NH" aria-pressed="false">NH</button>
           <button type="button" disabled title="Coming soon">MI</button>
-          <button type="button" disabled title="Coming soon">GA</button>
-          <button type="button" class="on" aria-pressed="true">KY</button>
+          <button type="button" data-lottery="GA" aria-pressed="false">GA</button>
+          <button type="button" data-lottery="KY" class="on" aria-pressed="true">KY</button>
           <button type="button" disabled title="Coming soon">DC</button>
           <button type="button" disabled title="Coming soon">ALC</button>
           <button type="button" disabled title="Coming soon">BCLC</button>
@@ -279,7 +280,7 @@
       <div class="panel" style="margin-top:14px">
         <div class="panel-h">What was written</div>
         <div class="panel-b">
-          <table>
+          <table id="kyResultTabs">
             <thead>
               <tr><th>Tab</th><th>Role</th></tr>
             </thead>
@@ -288,6 +289,14 @@
               <tr><td>Odds Table</td><td>Same-payout tiers merged; default prices 0.5, 1, 2, 5, 10, 20, 30, 50; 1-in-X = pool / grouped winners</td></tr>
               <tr><td>Summary(Delivery)</td><td>Payout, hit rate, x0–x5 / x5–x20 / x20–top, JP ratios</td></tr>
               <tr><td>Prize Breakdown</td><td>Win Methods order, Pay Table matrix</td></tr>
+            </tbody>
+          </table>
+          <table id="packResultTabs" class="hidden" hidden>
+            <thead>
+              <tr><th>Tab</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Delivery</td><td>NC keeps Frequency order. GA / PA / NH sort winning prizes smallest-first, with consolidated 1-in-X and % of prize fund. Bonus and Freeplay lines are always present. JP RTP is linked from Progressive Jackpots when Frequency has a JP RTP row.</td></tr>
             </tbody>
           </table>
           <p class="note" style="margin-top:12px">
@@ -301,13 +310,13 @@
     <h2>What this does not do</h2>
     <p class="note">
       It does not retune Frequency, RTP, or jackpot math. Combined multi-price Delivery packs
-      are not inputs — upload the per-price PPS. If ExcelJS cannot open a file, open it in Excel
-      and Save As .xlsx first. Native Excel formatting will be close to the KY templates, not a
-      pixel-perfect clone of every theme index.
+      are not inputs — upload the per-price PPS. Buy-feature packs are still one workbook per
+      game. If ExcelJS cannot open a file, open it in Excel and Save As .xlsx first. Native Excel
+      formatting follows the NC / GA layouts, not a pixel-perfect clone of every theme index.
     </p>
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20260918-4"></script>
+  <script type="module" src="app.js?v=20261002-1"></script>
 </body>
 </html>
