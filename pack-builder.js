@@ -352,9 +352,12 @@ function lookupMeta(freq, lottery) {
     NaN,
   );
   const hasJp = Boolean(findLabelRow(freq, (l) => startsWithCi(l, "jp rtp")));
-  const jpFormula =
-    formulaAtLabel(freq, (l) => startsWithCi(l, "jp rtp")) ||
-    "='Progressive Jackpots'!C30+'Progressive Jackpots'!C31";
+  const freqRows = {
+    pool: findLabelRow(freq, (l) => startsWithCi(l, "odds down")) || 6,
+    rtp: findLabelRow(freq, (l) => startsWithCi(l, "rtp setting")) || 10,
+    wins: findLabelRow(freq, (l) => startsWithCi(l, "winning tiers")) || 14,
+    hit: findLabelRow(freq, (l) => startsWithCi(l, "hit rate")) || 15,
+  };
   return {
     spec,
     jurisdiction: String(jurisdiction || spec.name),
@@ -365,8 +368,113 @@ function lookupMeta(freq, lottery) {
     buy,
     rtp,
     hasJp,
-    jpFormula,
+    freqRows,
   };
+}
+
+function colLetter(n) {
+  let result = "";
+  let number = n;
+  while (number > 0) {
+    const rem = (number - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    number = Math.floor((number - 1) / 26);
+  }
+  return result;
+}
+
+function colNumber(letters) {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
+function shiftFormula(formula, dCol, dRow) {
+  return String(formula).replace(
+    /(^|[^A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)(\d+)/g,
+    (match, pre, colAbs, col, rowAbs, row) => {
+      let c = colNumber(col);
+      let r = Number(row);
+      if (!colAbs) c += dCol;
+      if (!rowAbs) r += dRow;
+      if (c < 1 || r < 1) return match;
+      return `${pre}${colAbs}${colLetter(c)}${rowAbs}${r}`;
+    },
+  );
+}
+
+function jackpotFreqMap(layout, meta, rows) {
+  const map = new Map();
+  const { pool, rtp, wins, hit } = meta.freqRows;
+  if (layout === "NC") {
+    map.set(`N${pool}`, "$L$6");
+    map.set(`N${rtp}`, `$L$${rows.rtpSet}`);
+    map.set(`N${wins}`, `$L$${rows.winFreq}`);
+    map.set(`N${hit}`, `$L$${rows.hit}`);
+  } else {
+    map.set(`N${pool}`, "$B$5");
+    map.set(`N${rtp}`, "$B$9");
+    map.set(`N${wins}`, `$B$${rows.winFreq}`);
+    map.set(`N${hit}`, `$B$${rows.hit}`);
+  }
+  return map;
+}
+
+function rewriteJackpotFormula(formula, dRow, freqMap) {
+  const localized = String(formula).replace(
+    /'?Frequency'?!(\$?)([A-Z]{1,3})(\$?)(\d+)/gi,
+    (match, _colAbs, col, _rowAbs, row) => freqMap.get(`${col.toUpperCase()}${row}`) || match,
+  );
+  return shiftFormula(localized.replace(/^=/, ""), 0, dRow);
+}
+
+function copyJackpotSetting(ws, pj, jpStart, freqMap) {
+  const dRow = jpStart - 2;
+  const maxRow = Math.min(pj.rowCount || 32, 80);
+  const maxCol = Math.min(Math.max(pj.columnCount || 24, 24), 30);
+  for (let srcRow = 2; srcRow <= maxRow; srcRow += 1) {
+    const dstRow = jpStart + (srcRow - 2);
+    for (let col = 2; col <= maxCol; col += 1) {
+      if (srcRow <= 7 && col >= 5) continue;
+      const src = pj.getCell(srcRow, col);
+      const raw = src.value;
+      if (raw == null || raw === "") continue;
+      const text = cellResult(src);
+      if (typeof text === "string" && /json setup/i.test(text)) continue;
+      const dst = ws.getCell(dstRow, col);
+      const formula = cellFormula(src);
+      if (formula) dst.value = { formula: rewriteJackpotFormula(formula, dRow, freqMap) };
+      else dst.value = text;
+      const fmt = src.numFmt && src.numFmt !== "General" ? plainFormatCode(src.numFmt) : null;
+      if (fmt) dst.numFmt = fmt;
+      if (src.font && (src.font.name || src.font.size || src.font.bold)) {
+        dst.font = {
+          name: src.font.name,
+          size: src.font.size,
+          bold: Boolean(src.font.bold),
+          italic: Boolean(src.font.italic),
+          ...(src.font.color ? { color: cloneJson(src.font.color) } : {}),
+        };
+      }
+    }
+  }
+  return jpStart;
+}
+
+function linkJackpotSummary(ws, layout, meta, jpStart) {
+  if (layout === "NC") {
+    const sum = ncSummaryRows(meta.buy, true);
+    setValue(ws, `L${sum.jp}`, `=C${jpStart + 28}+C${jpStart + 29}`);
+    ws.getCell(`L${sum.jp}`).numFmt = FMT_PCT;
+    ws.getCell(`L${sum.jp}`).font = { name: "Helv", size: 8 };
+    return;
+  }
+  setValue(ws, "B10", `=C${jpStart + 12}`);
+  setValue(ws, "B11", `=C${jpStart + 19}`);
+  ws.getCell("B10").numFmt = FMT_PCT;
+  ws.getCell("B11").numFmt = FMT_PCT;
+  ws.getCell("B10").font = { name: "Calibri", size: 10 };
+  ws.getCell("B11").font = { name: "Calibri", size: 10 };
 }
 
 function assertPool(meta) {
@@ -525,7 +633,7 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
     `=IF(ROUND(L${sum.rtpSet},6)=ROUND(L${sum.actual},6),"okay","error")`,
   );
   if (hasJp) {
-    setValue(ws, `L${sum.jp}`, meta.jpFormula);
+    setValue(ws, `L${sum.jp}`, "=0");
     setValue(ws, `L${sum.totalRtp}`, `=L${sum.jp}+L${sum.actual}`);
   }
   setValue(ws, `L${sum.winFreq}`, `=SUM(E5:E${last})`);
@@ -900,6 +1008,14 @@ export async function buildPack(buffer, filename, options = {}) {
     spec.layout === "NC"
       ? buildNcDelivery(ws, freq, meta, source, dateSerial)
       : buildGaDelivery(ws, freq, meta, source, dateSerial);
+  if (meta.hasJp) {
+    const pj = requireSheet(wb, "Progressive Jackpots");
+    const jpStart = built.tot + 2;
+    const summaryRows = spec.layout === "NC" ? ncSummaryRows(meta.buy, true) : gaLeftRow(true);
+    copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows));
+    linkJackpotSummary(ws, spec.layout, meta, jpStart);
+    built.jpStart = jpStart;
+  }
   applyTabColor(ws);
   orderPackSheets(wb);
   disableFullCalcOnLoad(wb);
