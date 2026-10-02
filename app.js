@@ -1,10 +1,10 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261002-3";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261002-4";
 import {
   buildPack,
   inspectPack,
   isPackLottery,
   packOutputFilename,
-} from "./pack-builder.js?v=20261002-3";
+} from "./pack-builder.js?v=20261002-4";
 
 const $ = (id) => document.getElementById(id);
 

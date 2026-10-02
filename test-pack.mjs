@@ -149,6 +149,10 @@ const xmasContrib = xmasBuilt.report.delivery.contribRtp;
 assert(xmasD.getCell(xmasJp, 2).value === "Base JP Odds Down", `Xmas JP start ${xmasD.getCell(xmasJp, 2).value}`);
 assert(xmasD.getCell(xmasJp, 4).value === 50000000, `Xmas odds down ${xmasD.getCell(xmasJp, 4).value}`);
 assert(xmasD.getCell(xmasJp + 1, 2).value === "Stake", `Xmas stake label ${xmasD.getCell(xmasJp + 1, 2).value}`);
+assert(xmasD.getCell("A2").fill?.fgColor?.theme === 4, "Christmas A2 fill");
+assert(xmasD.getCell("A3").fill?.fgColor?.theme === 4, "Christmas A3 fill");
+assert(xmasD.getCell(xmasJp, 2).border?.left?.style === "medium", "JP setting left border");
+assert(xmasD.getCell(xmasJp, 4).border?.top?.style === "medium", "JP setting top border");
 assert(xmasD.getCell(xmasJp, 6).value === "BASE", `Xmas BASE ${xmasD.getCell(xmasJp, 6).value}`);
 assert(formulaOf(xmasD.getCell("B10")) === `=D${xmasSeed}`, `Xmas B10 ${formulaOf(xmasD.getCell("B10"))}`);
 assert(formulaOf(xmasD.getCell("B11")) === `=D${xmasContrib}`, `Xmas B11 ${formulaOf(xmasD.getCell("B11"))}`);
@@ -192,4 +196,8 @@ async function assertSafePackage(buffer, label) {
 await assertSafePackage(piggyBuilt.buffer, "PiggyBreaker");
 await assertSafePackage(libBuilt.buffer, "LibertyLuck");
 await assertSafePackage(xmasBuilt.buffer, "ChristmasCash");
+for (let i = 1; i <= 12; i += 1) {
+  const xml = await readZipText(xmasBuilt.buffer, `xl/worksheets/sheet${i}.xml`);
+  if (xml) assert(!xml.includes("[1]"), `sheet${i} has a broken [1] sheet reference`);
+}
 console.log("pack ok");

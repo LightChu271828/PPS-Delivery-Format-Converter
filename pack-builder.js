@@ -655,8 +655,93 @@ function buildGaJackpotSetting(ws, pj, jpStart) {
   styleCell(setValue(ws, `B${triggerHeader}`, "Number"), cal, null, null);
   styleCell(setValue(ws, `D${triggerHeader}`, "Name"), cal, null, null);
   styleCell(setValue(ws, `E${triggerHeader}`, " Trigger Value"), cal, null, null);
+  applyGaJackpotBorders(ws, {
+    baseDown,
+    stakeRow,
+    jackpotPct,
+    baseFirst,
+    baseLast,
+    baseTotal,
+    seedHeader,
+    seedFirst,
+    seedLast,
+    contribHeader,
+    contribFirst,
+    contribLast,
+    triggerHeader,
+    triggerFirst,
+    triggerLast: triggerFirst + n - 1,
+  });
 
   return { jpStart, seedRtp, contribRtp, triggerLabel };
+}
+
+const MEDIUM_EDGE = { style: "medium", color: { indexed: 64 } };
+
+function paintRowEdges(ws, row, fromCol, toCol, flags) {
+  for (let col = fromCol; col <= toCol; col += 1) {
+    const sides = [];
+    if (flags.left && col === fromCol) sides.push("left");
+    if (flags.right && col === toCol) sides.push("right");
+    if (flags.top) sides.push("top");
+    if (flags.bottom) sides.push("bottom");
+    if (!sides.length) continue;
+    const border = {};
+    for (const side of sides) border[side] = { ...MEDIUM_EDGE };
+    ws.getCell(row, col).border = border;
+  }
+}
+
+function outlineDataRows(ws, first, last, fromCol, toCol) {
+  for (let row = first; row <= last; row += 1) {
+    paintRowEdges(ws, row, fromCol, toCol, {
+      left: true,
+      right: true,
+      top: row === first,
+      bottom: row === last,
+    });
+  }
+}
+
+function applyGaJackpotBorders(ws, rows) {
+  const {
+    baseDown,
+    stakeRow,
+    jackpotPct,
+    baseFirst,
+    baseLast,
+    baseTotal,
+    seedHeader,
+    seedFirst,
+    seedLast,
+    contribHeader,
+    contribFirst,
+    contribLast,
+    triggerHeader,
+    triggerFirst,
+    triggerLast,
+  } = rows;
+  for (let row = baseDown; row <= jackpotPct; row += 1) {
+    paintRowEdges(ws, row, 2, 4, {
+      left: true,
+      right: true,
+      top: row === baseDown,
+      bottom: row === jackpotPct,
+    });
+  }
+  paintRowEdges(ws, stakeRow, 6, 9, { left: true, right: true, top: true, bottom: true });
+  for (let row = baseFirst; row <= baseLast; row += 1) {
+    paintRowEdges(ws, row, 6, 9, { left: true, right: true });
+  }
+  paintRowEdges(ws, baseTotal, 6, 9, { left: true, right: true, bottom: true });
+  paintRowEdges(ws, seedHeader, 2, 8, { left: true, top: true });
+  paintRowEdges(ws, seedHeader, 9, 10, { top: true, bottom: true });
+  paintRowEdges(ws, seedHeader, 11, 11, { right: true, top: true, bottom: true });
+  outlineDataRows(ws, seedFirst, seedLast, 2, 11);
+  paintRowEdges(ws, contribHeader, 2, 11, { left: true, right: true, top: true, bottom: true });
+  outlineDataRows(ws, contribFirst, contribLast, 2, 11);
+  paintRowEdges(ws, triggerHeader, 2, 5, { left: true, right: true, top: true, bottom: true });
+  outlineDataRows(ws, triggerFirst, triggerLast, 2, 5);
 }
 
 function assertPool(meta) {
@@ -938,9 +1023,16 @@ function buildGaDelivery(ws, freq, meta, source, dateSerial) {
 
   setColWidths(ws, GA_WIDTHS);
   setValue(ws, "A1", meta.jurisdiction).font = { ...calibriB };
+  const titleFill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { theme: 4, tint: 0.7999816888943144 },
+  };
   setValue(ws, "A2", meta.title).font = { ...calibriB };
+  ws.getCell("A2").fill = titleFill;
   setValue(ws, "A3", dateSerial).numFmt = FMT_DATE_GA;
   ws.getCell("A3").font = { ...calibri };
+  ws.getCell("A3").fill = titleFill;
 
   const leftLabels = [
     [5, "Odds Down (ticket quantity if pool based):"],
@@ -1447,12 +1539,33 @@ function patchWorkbookXml(xml) {
   return xml.replace(/<calcPr\b[^>]*\/>/g, repl);
 }
 
+function sheetNamesFromWorkbook(xml) {
+  return [...xml.matchAll(/<sheet\b[^>]*\bname="([^"]+)"/g)].map((match) => match[1]);
+}
+
+function stripInternalWorkbookIndex(xml, sheetNames) {
+  let text = xml;
+  for (const name of sheetNames) {
+    const quoted = `'${name.replaceAll("'", "''")}'`;
+    text = text.replaceAll(`[1]${quoted}!`, `${quoted}!`);
+    if (!name.includes(" ") && !name.includes("'")) text = text.replaceAll(`[1]${name}!`, `${name}!`);
+  }
+  return text;
+}
+
 export async function patchPackXlsx(buffer) {
   const files = await unzipEntries(buffer);
   const styles = files.get("xl/styles.xml");
   const book = files.get("xl/workbook.xml");
+  const sheetNames = book ? sheetNamesFromWorkbook(decodeText(book)) : [];
   if (styles) files.set("xl/styles.xml", encodeText(patchStylesXml(decodeText(styles))));
   if (book) files.set("xl/workbook.xml", encodeText(patchWorkbookXml(decodeText(book))));
+  for (const [name, data] of files) {
+    if (!name.startsWith("xl/worksheets/sheet") || !name.endsWith(".xml")) continue;
+    const text = decodeText(data);
+    if (!text.includes("[1]")) continue;
+    files.set(name, encodeText(stripInternalWorkbookIndex(text, sheetNames)));
+  }
   return zipEntries(files);
 }
 
