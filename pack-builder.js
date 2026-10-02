@@ -467,14 +467,196 @@ function linkJackpotSummary(ws, layout, meta, jpStart) {
     setValue(ws, `L${sum.jp}`, `=C${jpStart + 28}+C${jpStart + 29}`);
     ws.getCell(`L${sum.jp}`).numFmt = FMT_PCT;
     ws.getCell(`L${sum.jp}`).font = { name: "Helv", size: 8 };
-    return;
   }
-  setValue(ws, "B10", `=C${jpStart + 12}`);
-  setValue(ws, "B11", `=C${jpStart + 19}`);
-  ws.getCell("B10").numFmt = FMT_PCT;
-  ws.getCell("B11").numFmt = FMT_PCT;
-  ws.getCell("B10").font = { name: "Calibri", size: 10 };
-  ws.getCell("B11").font = { name: "Calibri", size: 10 };
+}
+
+const GA_INPUT_FILL = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { theme: 7, tint: 0.7999816888943144 },
+};
+const GA_STAKE_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC000" } };
+const GA_SPLIT_FILL = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { theme: 9, tint: 0.7999816888943144 },
+};
+const GA_BASE_FILL = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { theme: 2, tint: -0.0999786370433668 },
+};
+
+function styleCell(cell, font, fmt, fill) {
+  cell.font = font;
+  if (fmt) cell.numFmt = fmt;
+  if (fill) cell.fill = fill;
+}
+
+function readGaJackpotTiers(pj) {
+  const tiers = [];
+  for (let row = 11; row <= 13; row += 1) {
+    const number = cellResult(pj.getCell(row, 2));
+    const name = cellResult(pj.getCell(row, 3));
+    if (number == null || number === "" || name == null || name === "") break;
+    const oddsUp = asNumber(cellResult(pj.getCell(row, 13)), NaN);
+    const seed = asNumber(cellResult(pj.getCell(row, 14)), NaN);
+    const trigger = asNumber(cellResult(pj.getCell(row, 15)), NaN);
+    if (![oddsUp, seed, trigger].every(Number.isFinite)) {
+      throw new Error(
+        `Progressive Jackpots row ${row} is missing cached Odds Up, Seed, or Target trigger. Open the PPS in Excel and save it.`,
+      );
+    }
+    tiers.push({ number, name: String(name), oddsUp, seed, trigger });
+  }
+  if (!tiers.length) throw new Error("Progressive Jackpots has no jackpot tiers.");
+  return tiers;
+}
+
+function buildGaJackpotSetting(ws, pj, jpStart) {
+  const oddsDown = asNumber(cellResult(pj.getCell("C2")), NaN);
+  const stake = asNumber(cellResult(pj.getCell("C3")), NaN);
+  if (!Number.isFinite(oddsDown) || !Number.isFinite(stake)) {
+    throw new Error("Progressive Jackpots Base JP Odds Down or JP Stake is missing.");
+  }
+  const tiers = readGaJackpotTiers(pj);
+  const n = tiers.length;
+  const cal = { name: "Calibri", size: 10 };
+  const calB = { name: "Calibri", size: 10, bold: true };
+  const helv = { name: "Helv", size: 8 };
+  const helvB = { name: "Helv", size: 8, bold: true };
+
+  const baseDown = jpStart;
+  const stakeRow = jpStart + 1;
+  const revenue = jpStart + 2;
+  const jackpot = jpStart + 3;
+  const jackpotPct = jpStart + 4;
+  const baseFirst = jpStart + 2;
+  const baseLast = baseFirst + n - 1;
+  const baseTotal = baseLast + 1;
+  const seedLabel = jackpotPct + 2;
+  const seedHeader = seedLabel + 1;
+  const seedFirst = seedHeader + 1;
+  const seedLast = seedFirst + n - 1;
+  const seedRtp = seedLast + 1;
+  const contribLabel = seedRtp + 2;
+  const contribHeader = contribLabel + 1;
+  const contribFirst = contribHeader + 1;
+  const contribLast = contribFirst + n - 1;
+  const contribSum = contribLast + 1;
+  const contribRtp = contribSum + 1;
+  const triggerLabel = contribRtp + 2;
+  const triggerHeader = triggerLabel + 1;
+  const triggerFirst = triggerHeader + 1;
+
+  const header = [
+    [baseDown, "Base JP Odds Down", oddsDown, FMT_INT, GA_INPUT_FILL],
+    [stakeRow, "Stake", stake, "0.00", GA_STAKE_FILL],
+    [revenue, "Revenue", `=D${baseDown}*D${stakeRow}`, FMT_INT, null],
+    [jackpot, "Jackpot", `=D${stakeRow}*D${jackpotPct}`, "0.00", null],
+    [jackpotPct, "Jackpot %", `=D${seedRtp}+D${contribRtp}`, FMT_PCT, GA_INPUT_FILL],
+  ];
+  for (const [row, label, value, fmt, fill] of header) {
+    styleCell(setValue(ws, `B${row}`, label), cal, null, null);
+    styleCell(setValue(ws, `D${row}`, value), cal, fmt, fill);
+  }
+
+  styleCell(setValue(ws, `F${baseDown}`, "BASE"), helvB, null, null);
+  for (const [col, label] of [
+    ["F", "Odds Up"],
+    ["G", "Odds Down"],
+    ["H", "1 in x Odds"],
+    ["I", "Prize Cost"],
+  ]) {
+    styleCell(setValue(ws, `${col}${stakeRow}`, label), helvB, null, GA_BASE_FILL);
+  }
+  tiers.forEach((tier, idx) => {
+    const row = baseFirst + idx;
+    const seedRow = seedFirst + idx;
+    styleCell(setValue(ws, `F${row}`, tier.oddsUp), helv, FMT_MONEY, GA_INPUT_FILL);
+    styleCell(setValue(ws, `G${row}`, `=D${baseDown}`), helv, FMT_INT, GA_INPUT_FILL);
+    styleCell(setValue(ws, `H${row}`, `=G${row}/F${row}`), helv, FMT_INT, GA_INPUT_FILL);
+    styleCell(setValue(ws, `I${row}`, `=F${row}*E${seedRow}`), helv, FMT_INT, GA_INPUT_FILL);
+  });
+  styleCell(setValue(ws, `F${baseTotal}`, `=SUM(F${baseFirst}:F${baseLast})`), helvB, FMT_MONEY, GA_INPUT_FILL);
+  styleCell(setValue(ws, `I${baseTotal}`, `=SUM(I${baseFirst}:I${baseLast})`), helv, FMT_INT, GA_INPUT_FILL);
+
+  styleCell(setValue(ws, `B${seedLabel}`, "Seed"), calB, null, null);
+  styleCell(setValue(ws, `K${seedLabel}`, `=D${jackpotPct}-D${contribRtp}`), calB, FMT_PCT, null);
+  const seedHeads = [
+    ["B", "Number"],
+    ["D", "Name"],
+    ["E", "Prize"],
+    ["F", "Base Odds Up"],
+    ["G", "Odds Down"],
+    ["H", "Base 1 in x Odds"],
+    ["I", "Prize Cost"],
+    ["J", "Contribution split"],
+    ["K", "Contribution"],
+  ];
+  for (const [col, label] of seedHeads) styleCell(setValue(ws, `${col}${seedHeader}`, label), calB, null, null);
+  for (const [col, label] of seedHeads) {
+    if (col === "E") styleCell(setValue(ws, `${col}${contribHeader}`, "Average Prize"), calB, null, null);
+    else styleCell(setValue(ws, `${col}${contribHeader}`, label), calB, null, null);
+  }
+  tiers.forEach((tier, idx) => {
+    const row = seedFirst + idx;
+    const baseRow = baseFirst + idx;
+    const triggerRow = triggerFirst + idx;
+    const contribRow = contribFirst + idx;
+    styleCell(setValue(ws, `B${row}`, tier.number), cal, null, null);
+    styleCell(setValue(ws, `D${row}`, tier.name), cal, null, null);
+    styleCell(setValue(ws, `E${row}`, tier.seed), cal, FMT_INT, GA_INPUT_FILL);
+    styleCell(setValue(ws, `F${row}`, `=F${baseRow}*D${stakeRow}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `G${row}`, `=D${baseDown}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `H${row}`, `=G${row}/F${row}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `I${row}`, `=E${row}*F${row}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `J${row}`, `=I${row}/I${seedRtp}`), cal, "0.0000000", GA_SPLIT_FILL);
+    styleCell(setValue(ws, `K${row}`, `=K${seedLabel}*J${row}*D${stakeRow}`), cal, FMT_MONEY, null);
+
+    styleCell(setValue(ws, `B${contribRow}`, tier.number), cal, null, null);
+    styleCell(setValue(ws, `D${contribRow}`, tier.name), cal, null, null);
+    styleCell(setValue(ws, `E${contribRow}`, `=E${triggerRow}-E${row}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `F${contribRow}`, `=F${baseRow}*D${stakeRow}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `G${contribRow}`, `=D${baseDown}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `H${contribRow}`, `=G${contribRow}/F${contribRow}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `I${contribRow}`, `=E${contribRow}*F${contribRow}`), cal, FMT_INT, null);
+    styleCell(setValue(ws, `J${contribRow}`, `=I${contribRow}/I${contribSum}`), cal, "0.0000000", GA_SPLIT_FILL);
+    styleCell(setValue(ws, `K${contribRow}`, `=K${contribLabel}*J${contribRow}*D${stakeRow}`), cal, FMT_MONEY, null);
+
+    styleCell(setValue(ws, `B${triggerRow}`, tier.number), cal, null, null);
+    styleCell(setValue(ws, `D${triggerRow}`, tier.name), cal, null, null);
+    styleCell(setValue(ws, `E${triggerRow}`, tier.trigger), cal, FMT_INT, GA_INPUT_FILL);
+  });
+
+  styleCell(setValue(ws, `B${seedRtp}`, "RTP"), calB, null, null);
+  styleCell(setValue(ws, `D${seedRtp}`, `=I${seedRtp}/D${revenue}`), calB, FMT_PCT, null);
+  styleCell(setValue(ws, `F${seedRtp}`, `=SUM(F${seedFirst}:F${seedLast})`), cal, FMT_INT, null);
+  styleCell(setValue(ws, `H${seedRtp}`, `=D${baseDown}/F${seedRtp}`), cal, FMT_INT, null);
+  styleCell(setValue(ws, `I${seedRtp}`, `=SUM(I${seedFirst}:I${seedLast})`), calB, FMT_INT, null);
+  styleCell(setValue(ws, `J${seedRtp}`, `=SUM(J${seedFirst}:J${seedLast})`), calB, FMT_INT, null);
+  styleCell(setValue(ws, `K${seedRtp}`, `=SUM(K${seedFirst}:K${seedLast})`), calB, FMT_MONEY, null);
+
+  styleCell(setValue(ws, `B${contribLabel}`, "Jackpot Contributions (excluding seed)"), calB, null, null);
+  styleCell(
+    setValue(ws, `K${contribLabel}`, `=D${jackpotPct}-I${seedRtp}/D${revenue}`),
+    calB,
+    FMT_PCT,
+    null,
+  );
+  styleCell(setValue(ws, `H${contribSum}`, `=SUM(H${contribFirst}:H${contribLast})`), cal, FMT_INT, null);
+  styleCell(setValue(ws, `I${contribSum}`, `=SUM(I${contribFirst}:I${contribLast})`), calB, FMT_INT, null);
+  styleCell(setValue(ws, `J${contribSum}`, `=SUM(J${contribFirst}:J${contribLast})`), calB, FMT_INT, null);
+  styleCell(setValue(ws, `K${contribSum}`, `=SUM(K${contribFirst}:K${contribLast})`), calB, FMT_MONEY, null);
+  styleCell(setValue(ws, `B${contribRtp}`, "RTP"), calB, null, null);
+  styleCell(setValue(ws, `D${contribRtp}`, `=I${contribSum}/D${revenue}`), calB, FMT_PCT, null);
+
+  styleCell(setValue(ws, `B${triggerLabel}`, "Target trigger"), calB, null, null);
+  styleCell(setValue(ws, `B${triggerHeader}`, "Number"), cal, null, null);
+  styleCell(setValue(ws, `D${triggerHeader}`, "Name"), cal, null, null);
+  styleCell(setValue(ws, `E${triggerHeader}`, " Trigger Value"), cal, null, null);
+
+  return { jpStart, seedRtp, contribRtp, triggerLabel };
 }
 
 function assertPool(meta) {
@@ -1011,10 +1193,23 @@ export async function buildPack(buffer, filename, options = {}) {
   if (meta.hasJp) {
     const pj = requireSheet(wb, "Progressive Jackpots");
     const jpStart = built.tot + 2;
-    const summaryRows = spec.layout === "NC" ? ncSummaryRows(meta.buy, true) : gaLeftRow(true);
-    copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows));
-    linkJackpotSummary(ws, spec.layout, meta, jpStart);
-    built.jpStart = jpStart;
+    if (spec.layout === "NC") {
+      const summaryRows = ncSummaryRows(meta.buy, true);
+      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows));
+      linkJackpotSummary(ws, spec.layout, meta, jpStart);
+      built.jpStart = jpStart;
+    } else {
+      const placed = buildGaJackpotSetting(ws, pj, jpStart);
+      setValue(ws, "B10", `=D${placed.seedRtp}`);
+      setValue(ws, "B11", `=D${placed.contribRtp}`);
+      ws.getCell("B10").numFmt = FMT_PCT;
+      ws.getCell("B11").numFmt = FMT_PCT;
+      ws.getCell("B10").font = { name: "Calibri", size: 10 };
+      ws.getCell("B11").font = { name: "Calibri", size: 10 };
+      built.jpStart = placed.jpStart;
+      built.seedRtp = placed.seedRtp;
+      built.contribRtp = placed.contribRtp;
+    }
   }
   applyTabColor(ws);
   orderPackSheets(wb);

@@ -144,10 +144,22 @@ assertPlainNumberFormats(xmasD, "ChristmasCash");
 assert(xmasD.getCell("E2").value === "order", "ChristmasCash table starts at E");
 assert(xmasD.getCell("A10").value === "JP Seed  RTP:", `Xmas A10 ${xmasD.getCell("A10").value}`);
 const xmasJp = xmasBuilt.report.delivery.jpStart;
+const xmasSeed = xmasBuilt.report.delivery.seedRtp;
+const xmasContrib = xmasBuilt.report.delivery.contribRtp;
 assert(xmasD.getCell(xmasJp, 2).value === "Base JP Odds Down", `Xmas JP start ${xmasD.getCell(xmasJp, 2).value}`);
-assert(formulaOf(xmasD.getCell("B10")) === `=C${xmasJp + 12}`, `Xmas B10 ${formulaOf(xmasD.getCell("B10"))}`);
-assert(formulaOf(xmasD.getCell("B11")) === `=C${xmasJp + 19}`, `Xmas B11 ${formulaOf(xmasD.getCell("B11"))}`);
-assert(!String(xmasD.getCell(xmasJp, 5).value || "").toLowerCase().includes("json"), "Xmas copied json setup");
+assert(xmasD.getCell(xmasJp, 4).value === 50000000, `Xmas odds down ${xmasD.getCell(xmasJp, 4).value}`);
+assert(xmasD.getCell(xmasJp + 1, 2).value === "Stake", `Xmas stake label ${xmasD.getCell(xmasJp + 1, 2).value}`);
+assert(xmasD.getCell(xmasJp, 6).value === "BASE", `Xmas BASE ${xmasD.getCell(xmasJp, 6).value}`);
+assert(formulaOf(xmasD.getCell("B10")) === `=D${xmasSeed}`, `Xmas B10 ${formulaOf(xmasD.getCell("B10"))}`);
+assert(formulaOf(xmasD.getCell("B11")) === `=D${xmasContrib}`, `Xmas B11 ${formulaOf(xmasD.getCell("B11"))}`);
+assert(xmasD.getCell(xmasSeed, 2).value === "RTP", "Xmas seed RTP label");
+assert(String(xmasD.getCell(xmasBuilt.report.delivery.jpStart, 2).value) !== "Overal Game Summary");
+let xmasTrigger = null;
+for (let row = xmasJp; row <= xmasJp + 40; row += 1) {
+  if (xmasD.getCell(row, 2).value === "Target trigger") xmasTrigger = row;
+  assert(xmasD.getCell(row, 2).value !== "Overal Game Summary", "GA JP block should not copy the NC overall summary");
+}
+assert(xmasTrigger, "Xmas missing Target trigger");
 assert(xmasD.getCell("A13").value === "Total Game RTP:", `Xmas A13 ${xmasD.getCell("A13").value}`);
 assert(String(xmasD.getCell("A18").value).startsWith("Bonus"), `Xmas Bonus ${xmasD.getCell("A18").value}`);
 assert(String(xmasD.getCell("A26").value || "").includes("strictly confidential"), "Xmas confidential shifted");
