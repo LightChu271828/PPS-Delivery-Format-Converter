@@ -36,7 +36,7 @@ const outDir = path.join(root, "test-out");
 await mkdir(outDir, { recursive: true });
 
 assert(
-  isPackLottery("NC") && isPackLottery("ga") && isPackLottery("PA") && isPackLottery("NH") && isPackLottery("VA"),
+  ["NC", "ga", "PA", "NH", "VA", "DC"].every((id) => isPackLottery(id)),
   "pack lottery ids",
 );
 assert(!isPackLottery("KY"), "KY is not a pack lottery");
@@ -310,6 +310,144 @@ assert(/hit rate/i.test(String(sideD.getCell("B15").value)), `Fire Goat side B15
 await assertSafePackage(sideBuilt.buffer, "FireGoat side");
 await writeFile(path.join(outDir, packOutputFilename(goatSideName, "VA")), Buffer.from(sideBuilt.buffer));
 console.log("fire goat", goatInfo.winningTiers, sideBuilt.report.winningTiers, "jp", goatJp, sideJp);
+
+function sameCell(a, b) {
+  const x = formulaOf(a);
+  const y = formulaOf(b);
+  if (x === y || (x == null && y == null)) return true;
+  if (typeof x === "number" && typeof y === "number") return Math.abs(x - y) < 1e-9;
+  if (typeof x === "string" && typeof y === "string") return x.replaceAll("$", "").trim() === y.replaceAll("$", "").trim();
+  return false;
+}
+
+function compareBlock(out, ref, rows, cols, label) {
+  const diff = [];
+  for (const r of rows) {
+    for (const c of cols) {
+      if (!sameCell(out.getCell(r, c), ref.getCell(r, c))) {
+        diff.push(`${out.getCell(r, c).address} ${JSON.stringify(formulaOf(out.getCell(r, c)))} vs ${JSON.stringify(formulaOf(ref.getCell(r, c)))}`);
+      }
+    }
+  }
+  assert(diff.length === 0, `${label} differs from the reference:\n${diff.slice(0, 12).join("\n")}`);
+}
+
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+function checkDcBox(out, ref, top, last, label) {
+  const labels = ["Total Tickets", "Retail Price", "Revenue", "Prize Fund", "Payout", "Odds", "Top Prize", "Max Top Prize $ Value", "Price Points", null, "Prize (as multiple of stake)", "NIL", ">0 to <1", 1, ">1 to 2", ">2 to 5", ">5 to 10", ">10 to 20", ">20 to 30", ">30 to 50", ">50 to 100", ">100"];
+  labels.forEach((text, i) => {
+    assert((out.getCell(top + i, 11).value ?? null) === text, `${label} K${top + i} ${out.getCell(top + i, 11).value}`);
+    assert((ref.getCell(top + i, 11).value ?? null) === text, `${label} reference K${top + i} ${ref.getCell(top + i, 11).value}`);
+    assert(out.getCell(top + i, 11).border?.left?.style === "medium", `${label} K${top + i} left edge`);
+    assert(out.getCell(top + i, 12).border?.right?.style === "medium", `${label} L${top + i} right edge`);
+  });
+  const end = top + labels.length - 1;
+  for (const col of [11, 12]) {
+    assert(out.getCell(top, col).border?.top?.style === "medium", `${label} box top`);
+    assert(out.getCell(end, col).border?.bottom?.style === "medium", `${label} box bottom`);
+  }
+  let fund = 0;
+  let wins = 0;
+  let maxPrize = 0;
+  const base = out.getCell("L7").value;
+  const prizes = [];
+  for (let r = 5; r <= last; r += 1) {
+    const d = out.getCell(r, 4).value;
+    const e = out.getCell(r, 5).value;
+    fund += d * e;
+    wins += e;
+    maxPrize = Math.max(maxPrize, d);
+    prizes.push([d / base, d * e]);
+  }
+  const share = (test) => prizes.filter(([m]) => test(m)).reduce((s, [, g]) => s + g, 0) / fund;
+  const expected = [
+    share((m) => m > 0 && m < 1),
+    share((m) => m === 1),
+    ...[[1, 2], [2, 5], [5, 10], [10, 20], [20, 30], [30, 50], [50, 100]].map(([lo, hi]) => share((m) => m > lo && m <= hi)),
+    share((m) => m > 100),
+  ];
+  expected.forEach((v, i) => {
+    const refValue = ref.getCell(top + 12 + i, 12).value;
+    assert(Math.abs(v - refValue) < 1e-9, `${label} band ${labels[12 + i]} ${v} vs reference ${refValue}`);
+  });
+  const odds = `1 in ${(out.getCell("L6").value / wins).toFixed(2)}`;
+  assert(odds === ref.getCell(top + 5, 12).value, `${label} odds ${odds} vs ${ref.getCell(top + 5, 12).value}`);
+  const topText = `${(maxPrize / base).toLocaleString("en-US")}x`;
+  assert(topText === String(ref.getCell(top + 6, 12).value).trim(), `${label} top prize ${topText}`);
+  assert(String(formulaOf(out.getCell(top + 5, 12))).includes("TEXT("), `${label} odds formula`);
+  return { maxPrize, base, end };
+}
+
+const dcDir = path.join(onedrive, "DC");
+const dcMmName = "260812_DC_MerryMatch5_PPS_086.xlsx";
+const dcMmBuf = await readFile(path.join(dcDir, dcMmName));
+const dcMmInfo = await inspectPack(dcMmBuf, dcMmName, "DC");
+assert(dcMmInfo.layout === "DC" && !dcMmInfo.hasJp, `DC MerryMatch5 layout ${dcMmInfo.layout} jp ${dcMmInfo.hasJp}`);
+const dcMmBuilt = await buildPack(dcMmBuf, dcMmName, { lottery: "DC" });
+const dcMmWb = await loadBuilt(dcMmBuilt.buffer);
+const dcMmD = dcMmWb.getWorksheet("Delivery");
+assertPlainNumberFormats(dcMmD, "DC MerryMatch5");
+const dcMmSrc = await loadBuilt(dcMmBuf);
+const dcMmRef = dcMmSrc.getWorksheet("Delivery");
+const dcMmNames = dcMmWb.worksheets.map((w) => w.name);
+assert(dcMmNames.join("|") === dcMmSrc.worksheets.map((w) => w.name).join("|"), `DC MerryMatch5 tabs ${dcMmNames}`);
+const dcMmLast = 4 + dcMmInfo.winningTiers;
+compareBlock(dcMmD, dcMmRef, range(2, dcMmLast + 1), range(2, 9), "DC MerryMatch5 table");
+compareBlock(dcMmD, dcMmRef, range(2, 13), [11, 12], "DC MerryMatch5 summary");
+assert(!dcMmD.getCell("A1").value, "DC A1 should be empty");
+assert(String(dcMmD.getCell("K16").value || "").includes("strictly confidential"), "DC MerryMatch5 confidential at K16");
+assert(!/game info/i.test(JSON.stringify(dcMmD.getColumn(11).values)), "DC should not write Game info");
+const mmBox = checkDcBox(dcMmD, dcMmRef, 23, dcMmLast, "DC MerryMatch5");
+assert(dcMmD.getCell("L31").value === String(dcMmRef.getCell("L31").value).trim(), `DC price points ${dcMmD.getCell("L31").value}`);
+assert(mmBox.maxPrize / mmBox.base * 50 === dcMmRef.getCell("L30").value, "DC MerryMatch5 max top prize value");
+for (const col of ["B", "C", "D", "E", "F", "G", "H", "I"]) {
+  assert(dcMmD.getCell(`${col}3`).border?.bottom?.style === "medium", `DC ${col}3 underline`);
+  assert(dcMmD.getCell(`${col}${dcMmLast}`).border?.bottom?.style === "medium", `DC ${col}${dcMmLast} underline`);
+}
+await assertSafePackage(dcMmBuilt.buffer, "DC MerryMatch5");
+await writeFile(path.join(outDir, packOutputFilename(dcMmName, "DC")), Buffer.from(dcMmBuilt.buffer));
+console.log("dc merrymatch5", dcMmInfo.winningTiers, "matches reference");
+
+const dcPhName = "260603_DC_Pharaoh'sDestiny(ChatterJP)_PPS_084_005.xlsx";
+const dcPhBuf = await readFile(path.join(dcDir, dcPhName));
+const dcPhInfo = await inspectPack(dcPhBuf, dcPhName, "DC");
+assert(dcPhInfo.hasJp, "Pharaoh's Destiny should be JP");
+const phPrices = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30];
+const dcPhBuilt = await buildPack(dcPhBuf, dcPhName, { lottery: "DC", pricePoints: phPrices });
+const dcPhWb = await loadBuilt(dcPhBuilt.buffer);
+const dcPhD = dcPhWb.getWorksheet("Delivery");
+assertPlainNumberFormats(dcPhD, "DC Pharaoh");
+const dcPhSrc = await loadBuilt(dcPhBuf);
+const dcPhRef = dcPhSrc.getWorksheet("Delivery");
+const phLast = 4 + dcPhInfo.winningTiers;
+const phJp = dcPhBuilt.report.delivery.jpStart;
+assert(phJp === phLast + 4, `Pharaoh JP start ${phJp}`);
+compareBlock(dcPhD, dcPhRef, range(2, phLast + 1), range(2, 9), "DC Pharaoh table");
+compareBlock(dcPhD, dcPhRef, range(2, 15), [11], "DC Pharaoh summary labels");
+compareBlock(dcPhD, dcPhRef, [6, 7, 9, 10, 12, 13, 14, 15], [12], "DC Pharaoh summary values");
+compareBlock(dcPhD, dcPhRef, range(phJp, phJp + 30).filter((r) => r !== phJp + 27), range(2, 16), "DC Pharaoh JP block");
+assert(dcPhD.getCell(phJp + 27, 2).value === "Main Game RTP", "Pharaoh Main Game RTP row");
+assert(formulaOf(dcPhD.getCell(phJp + 27, 3)) === "=$L$11", `Pharaoh Main Game RTP follows PJ (Frequency N11) ${formulaOf(dcPhD.getCell(phJp + 27, 3))}`);
+const phPj = dcPhSrc.getWorksheet("Progressive Jackpots");
+for (let r = 2; r <= 32; r += 1) {
+  for (let c = 2; c <= 4; c += 1) {
+    const src = phPj.getCell(r, c);
+    const dst = dcPhD.getCell(phJp + r - 2, c);
+    for (const edge of ["left", "right", "top", "bottom"]) {
+      assert((src.border?.[edge]?.style || null) === (dst.border?.[edge]?.style || null), `Pharaoh JP border ${dst.address} ${edge}`);
+    }
+    if (src.fill?.pattern === "solid") assert(dst.fill?.fgColor?.theme === src.fill.fgColor?.theme, `Pharaoh JP fill ${dst.address}`);
+  }
+}
+assert(String(dcPhD.getCell("K18").value || "").includes("strictly confidential"), "Pharaoh confidential at K18");
+const phBox = checkDcBox(dcPhD, dcPhRef, 25, phLast, "DC Pharaoh");
+assert(dcPhD.getCell("L33").value === "$0.10, $0.20, $0.50, $1.00, $2.00, $5.00, $10.00, $20.00, $30.00", `Pharaoh price points ${dcPhD.getCell("L33").value}`);
+assert(phBox.maxPrize / phBox.base * 30 === dcPhRef.getCell("L32").value, "Pharaoh max top prize value");
+assert(dcPhWb.worksheets[1].name === "Delivery", "Pharaoh Delivery after Frequency");
+await assertSafePackage(dcPhBuilt.buffer, "DC Pharaoh");
+await writeFile(path.join(outDir, packOutputFilename(dcPhName, "DC")), Buffer.from(dcPhBuilt.buffer));
+console.log("dc pharaoh", dcPhInfo.winningTiers, "jp", phJp);
 
 async function assertSafePackage(buffer, label) {
   const book = await readZipText(buffer, "xl/workbook.xml");

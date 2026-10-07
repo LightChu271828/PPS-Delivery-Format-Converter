@@ -15,7 +15,11 @@ export const PACK_LOTTERIES = {
   PA: { code: "PA", layout: "GA", name: "Pennsylvania Lottery" },
   NH: { code: "NH", layout: "GA", name: "New Hampshire Lottery" },
   VA: { code: "VA", layout: "VA", name: "Virginia Lottery" },
+  DC: { code: "DC", layout: "DC", name: "DC Lottery" },
 };
+
+export const DC_PRICE_OPTIONS = [0.1, 0.2, 0.5, 1, 2, 3, 5, 10, 20, 30, 50];
+export const DC_DEFAULT_PRICE_POINTS = [0.5, 1, 2, 3, 5, 10, 20, 30, 50];
 
 export const PACK_SHEET = "Delivery";
 
@@ -65,6 +69,30 @@ const GA_WIDTHS = {
   14: 13,
   15: 13,
   16: 13,
+};
+
+const DC_WIDTHS = {
+  2: 17.11,
+  3: 55.33,
+  4: 13.33,
+  5: 12.66,
+  6: 15.33,
+  7: 17.66,
+  8: 14.78,
+  9: 12,
+  10: 12,
+  11: 37.11,
+  12: 23.44,
+  13: 17.55,
+  14: 12.55,
+  15: 21.11,
+  16: 16.66,
+  17: 18.33,
+  18: 12.33,
+  19: 18.78,
+  20: 16.11,
+  21: 19,
+  22: 23.44,
 };
 
 const VA_WIDTHS = {
@@ -338,7 +366,8 @@ function applyConfidential(ws, range, fontName, size = 8) {
 
 function orderPackSheets(wb, layout) {
   const byName = Object.fromEntries(wb.worksheets.map((ws) => [ws.name, ws]));
-  const names = layout === "VA" ? ["Frequency", PACK_SHEET] : ["Frequency", "Progressive Jackpots", PACK_SHEET];
+  const names =
+    layout === "VA" || layout === "DC" ? ["Frequency", PACK_SHEET] : ["Frequency", "Progressive Jackpots", PACK_SHEET];
   const head = names.map((n) => byName[n]).filter(Boolean);
   const skip = new Set(head);
   const tail = wb.worksheets.filter((ws) => !skip.has(ws));
@@ -420,8 +449,8 @@ function lookupMeta(freq, lottery) {
   );
   const hasJp = Boolean(findLabelRow(freq, (l) => startsWithCi(l, "jp rtp")));
   const hitRow =
-    findLabelRow(freq, (l) => /^hit rate\s*(:|\(main game\))/i.test(l)) ||
-    findLabelRow(freq, (l) => /hit rate/i.test(l) && !/^hit rate\s*\(\+/i.test(l));
+    findLabelRow(freq, (l) => /^hit (rate|freq)\s*(:|\(main game\)|$)/i.test(l)) ||
+    findLabelRow(freq, (l) => /hit (rate|freq)/i.test(l) && !/^hit rate\s*\(\+/i.test(l));
   const freqRows = {
     pool: findLabelRow(freq, (l) => startsWithCi(l, "odds down")) || 6,
     base: findLabelRow(freq, (l) => /^base\s*:?$/i.test(l)),
@@ -498,9 +527,10 @@ function jackpotFreqMap(layout, meta, rows) {
     if (actual) map.set(`N${actual}`, `$C$${rows.actual}`);
     map.set(`N${wins}`, `$C$${rows.winFreq}`);
     map.set(`N${hit}`, `$C$${rows.hit}`);
-  } else if (layout === "NC") {
+  } else if (layout === "NC" || layout === "DC") {
     map.set(`N${pool}`, "$L$6");
     map.set(`N${rtp}`, `$L$${rows.rtpSet}`);
+    if (actual) map.set(`N${actual}`, `$L$${rows.actual}`);
     map.set(`N${wins}`, `$L$${rows.winFreq}`);
     map.set(`N${hit}`, `$L$${rows.hit}`);
   } else {
@@ -578,13 +608,12 @@ function rewritePjRefs(formula, dRow) {
   );
 }
 
-function linkJackpotSummary(ws, layout, meta, jpStart) {
-  if (layout === "NC") {
-    const sum = ncSummaryRows(meta.buy, true);
-    setValue(ws, `L${sum.jp}`, `=C${jpStart + 28}+C${jpStart + 29}`);
-    ws.getCell(`L${sum.jp}`).numFmt = FMT_PCT;
-    ws.getCell(`L${sum.jp}`).font = { name: "Helv", size: 8 };
-  }
+function linkJackpotSummary(ws, meta, jpStart) {
+  const sum = ncSummaryRows(meta.buy, true);
+  const linked = rewritePjRefs(meta.jpRtpFormula, jpStart - 2);
+  setValue(ws, `L${sum.jp}`, `=${linked || `C${jpStart + 28}+C${jpStart + 29}`}`);
+  ws.getCell(`L${sum.jp}`).numFmt = FMT_PCT;
+  ws.getCell(`L${sum.jp}`).font = { ...FONT_HELV10 };
 }
 
 const GA_INPUT_FILL = {
@@ -912,8 +941,9 @@ function applyNcNumberFormats(ws, last, tot, buy, hasJp) {
   ws.getCell(`L${sum.hit}`).numFmt = FMT_MONEY;
 }
 
-function buildNcDelivery(ws, freq, meta, source) {
+function buildNcDelivery(ws, freq, meta, source, options = {}) {
   const { nonwin, rows } = source;
+  const dc = meta.spec.layout === "DC";
   const last = 4 + rows.length;
   const tot = last + 1;
   const buy = meta.buy;
@@ -921,16 +951,11 @@ function buildNcDelivery(ws, freq, meta, source) {
   const sum = ncSummaryRows(buy, hasJp);
   const fundCell = `L$${sum.fund}`;
   const poolCell = "L6";
-  const revenueCell = `L${sum.revenue}`;
-  const rng = `$C$5:$C$${last}`;
-  const drng = `$D$5:$D$${last}`;
-  const erng = `$E$5:$E$${last}`;
-  const grng = `$G$5:$G$${last}`;
   const helv8 = { name: "Helv", size: 8 };
   const helv8b = { name: "Helv", size: 8, bold: true };
   const helv10 = { name: "Helv", size: 10 };
 
-  setColWidths(ws, NC_WIDTHS);
+  setColWidths(ws, dc ? DC_WIDTHS : NC_WIDTHS);
 
   setValue(ws, "B2", "TIER");
   setValue(ws, "B3", "NUMBER");
@@ -964,11 +989,12 @@ function buildNcDelivery(ws, freq, meta, source) {
   setValue(ws, "C4", nonwin.method == null ? 0 : nonwin.method);
   applyMethodFill(ws.getCell("C4"), nonwin.fill, helv10);
   setValue(ws, "D4", cleanFloat(nonwin.prize));
+  const odds = (row) => (dc ? `=F${row}/E${row}` : `=IFERROR(F${row}/E${row},0)`);
   setValue(ws, "E4", `=F4-SUM(E5:E${last})`);
-  setValue(ws, "F4", meta.pool);
+  setValue(ws, "F4", dc ? "=$L$6" : meta.pool);
   setValue(ws, "G4", "=E4*D4");
-  setValue(ws, "H4", "=IFERROR(F4/E4,0)");
-  setValue(ws, "I4", `=IFERROR(G4/${fundCell},0)`);
+  setValue(ws, "H4", odds(4));
+  if (!dc) setValue(ws, "I4", `=IFERROR(G4/${fundCell},0)`);
 
   rows.forEach((item, idx) => {
     const row = 5 + idx;
@@ -977,15 +1003,15 @@ function buildNcDelivery(ws, freq, meta, source) {
     applyMethodFill(ws.getCell(`C${row}`), item.fill, helv10);
     setValue(ws, `D${row}`, item.prize);
     setValue(ws, `E${row}`, item.winners);
-    setValue(ws, `F${row}`, meta.pool);
+    setValue(ws, `F${row}`, dc ? "=$L$6" : meta.pool);
     setValue(ws, `G${row}`, `=E${row}*D${row}`);
-    setValue(ws, `H${row}`, `=IFERROR(F${row}/E${row},0)`);
+    setValue(ws, `H${row}`, odds(row));
     setValue(ws, `I${row}`, `=G${row}/${fundCell}`);
   });
 
   setValue(ws, `E${tot}`, `=SUM(E4:E${last})`);
   setValue(ws, `G${tot}`, `=SUM(G4:G${last})`);
-  setValue(ws, `I${tot}`, `=G${tot}/${fundCell}`);
+  setValue(ws, `I${tot}`, dc ? `=SUM(I4:I${last})` : `=G${tot}/${fundCell}`);
 
   setValue(ws, "K2", "Prize Structure").font = { ...FONT_TITLE };
   setValue(ws, "K3", meta.jurisdiction).font = { ...FONT_TITLE };
@@ -1019,9 +1045,9 @@ function buildNcDelivery(ws, freq, meta, source) {
   } else {
     setValue(ws, "L8", "=L6*L7");
   }
-  setValue(ws, `L${sum.fund}`, `=SUM(G5:G${last})`);
+  setValue(ws, `L${sum.fund}`, dc ? `=G${tot}` : `=SUM(G5:G${last})`);
   setValue(ws, `L${sum.rtpSet}`, meta.rtp);
-  setValue(ws, `L${sum.actual}`, `=L${sum.fund}/L${sum.revenue}`);
+  setValue(ws, `L${sum.actual}`, dc ? `=SUM(G5:G${last})/L${sum.revenue}` : `=L${sum.fund}/L${sum.revenue}`);
   setValue(
     ws,
     `M${sum.actual}`,
@@ -1034,6 +1060,100 @@ function buildNcDelivery(ws, freq, meta, source) {
   setValue(ws, `L${sum.winFreq}`, `=SUM(E5:E${last})`);
   setValue(ws, `L${sum.hit}`, `=${poolCell}/L${sum.hit - 1}`);
 
+  let confRange;
+  let pricePoints = null;
+  if (dc) {
+    pricePoints = writeDcGameSheet(ws, sum, last, options.pricePoints);
+    confRange = `K${sum.hit + 3}:N${sum.hit + 7}`;
+  } else {
+    const info = writeNcGameInfo(ws, meta, sum, last);
+    confRange = `K${info + 13}:N${info + 17}`;
+    ws.getRow(info + 13).height = 18;
+  }
+
+  for (const addr of ["L6", "L7", `L${sum.revenue}`, `L${sum.fund}`, `L${sum.rtpSet}`, `L${sum.actual}`, `L${sum.winFreq}`, `L${sum.hit}`]) {
+    ws.getCell(addr).font = { ...helv10 };
+  }
+  ws.getCell("L6").alignment = { horizontal: "right" };
+  if (buy) ws.getCell("L8").font = { ...helv10 };
+  if (hasJp) {
+    ws.getCell(`L${sum.jp}`).font = { ...helv10 };
+    ws.getCell(`L${sum.totalRtp}`).font = { ...helv10 };
+  }
+  for (let row = 4; row <= last; row += 1) {
+    ws.getCell(`B${row}`).font = { ...helv8b };
+    ws.getCell(`B${row}`).alignment = { ...CENTER };
+    ws.getCell(`C${row}`).alignment = { ...CENTER };
+    for (const col of ["D", "E", "F", "G", "H", "I"]) {
+      ws.getCell(`${col}${row}`).font = { ...helv8 };
+    }
+  }
+  for (const col of ["E", "G", "I"]) ws.getCell(`${col}${tot}`).font = { ...helv8 };
+  applyNcNumberFormats(ws, last, tot, buy, hasJp);
+  for (let col = 2; col <= 9; col += 1) {
+    ws.getCell(last, col).border = cloneJson(MEDIUM_BOTTOM);
+  }
+  applyConfidential(ws, confRange, "Helv", 8);
+  return { last, tot, fundCell, sum, pricePoints };
+}
+
+function formatPricePoints(prices) {
+  return prices.map((p) => `$${Number(p).toFixed(2)}`).join(", ");
+}
+
+function writeDcGameSheet(ws, sum, last, pricePoints) {
+  const prices = (pricePoints?.length ? pricePoints : DC_DEFAULT_PRICE_POINTS).map(Number).sort((a, b) => a - b);
+  const top = sum.hit + 10;
+  const drng = `$D$5:$D$${last}`;
+  const grng = `$G$5:$G$${last}`;
+  const mult = `${drng}/$L$7`;
+  const fund = `$L$${top + 3}`;
+  const label = (bold) => ({ font: bold ? FONT_HELV8B : FONT_GROUP, alignment: bold ? { horizontal: "left" } : undefined });
+  const lines = [
+    ["Total Tickets", true, "=L6", { numFmt: FMT_INT }],
+    ["Retail Price", true, "=L7", { numFmt: FMT_MONEY }],
+    ["Revenue", false, `=L${top + 1}*L${top}`, { numFmt: FMT_MONEY }],
+    ["Prize Fund", true, `=L${sum.fund}`, { numFmt: FMT_MONEY }],
+    ["Payout", true, `=L${top + 3}/L${top + 2}`, { numFmt: FMT_PCT }],
+    ["Odds", false, `="1 in "&TEXT(L${sum.hit},"0.00")`, { alignment: CENTER }],
+    ["Top Prize", false, `=TEXT(MAX(${drng})/$L$7,"#,##0")&"x"`, { alignment: CENTER }],
+    ["Max Top Prize $ Value", false, `=MAX(${drng})/$L$7*${prices[prices.length - 1]}`, { numFmt: FMT_INT }],
+    ["Price Points", false, formatPricePoints(prices), {}],
+    [null, false, null, {}],
+    ["Prize (as multiple of stake)", false, "Value Distribution", {}],
+    ["NIL", "band", "-", { numFmt: FMT_PCT }],
+    [">0 to <1", "band", `=SUMPRODUCT((${drng}>0)*(${mult}<1)*${grng})/${fund}`, { numFmt: FMT_PCT }],
+    [1, "band", `=SUMPRODUCT((${mult}=1)*${grng})/${fund}`, { numFmt: FMT_PCT }],
+  ];
+  const bands = [[1, 2], [2, 5], [5, 10], [10, 20], [20, 30], [30, 50], [50, 100]];
+  for (const [lo, hi] of bands) {
+    lines.push([`>${lo} to ${hi}`, "band", `=SUMPRODUCT((${mult}>${lo})*(${mult}<=${hi})*${grng})/${fund}`, { numFmt: FMT_PCT }]);
+  }
+  lines.push([">100", "band", `=SUMPRODUCT((${mult}>100)*${grng})/${fund}`, { numFmt: FMT_PCT }]);
+  const end = top + lines.length - 1;
+  lines.forEach(([text, kind, value, extra], idx) => {
+    const row = top + idx;
+    const edge = (side) => ({
+      [side]: { style: "medium", color: { indexed: 64 } },
+      ...(row === top ? { top: { style: "medium", color: { indexed: 64 } } } : {}),
+      ...(row === end ? { bottom: { style: "medium", color: { indexed: 64 } } } : {}),
+    });
+    const kStyle = kind === "band" ? { font: FONT_GROUP, alignment: CENTER } : label(kind === true);
+    put(ws, `K${row}`, text ?? undefined, { ...kStyle, border: edge("left") });
+    put(ws, `L${row}`, value ?? undefined, { font: FONT_GROUP, ...extra, border: edge("right") });
+  });
+  return prices;
+}
+
+function writeNcGameInfo(ws, meta, sum, last) {
+  const rng = `$C$5:$C$${last}`;
+  const drng = `$D$5:$D$${last}`;
+  const erng = `$E$5:$E$${last}`;
+  const grng = `$G$5:$G$${last}`;
+  const poolCell = "L6";
+  const helv8b = FONT_HELV8B;
+  const helv10 = FONT_HELV10;
+  const revenueCell = `L${sum.revenue}`;
   const info = sum.gameInfo;
   setValue(ws, `K${info}`, `Game info for ${meta.spec.code}`).font = { ...FONT_HELV10B };
   ws.getCell(`K${info}`).alignment = { horizontal: "left" };
@@ -1104,36 +1224,10 @@ function buildNcDelivery(ws, freq, meta, source) {
   for (let row = info + 7; row <= info + 10; row += 1) {
     ws.getCell(`L${row}`).numFmt = FMT_PCT;
   }
-
-  for (const addr of ["L6", "L7", `L${sum.revenue}`, `L${sum.fund}`, `L${sum.rtpSet}`, `L${sum.actual}`, `L${sum.winFreq}`, `L${sum.hit}`]) {
-    ws.getCell(addr).font = { ...helv10 };
-  }
-  ws.getCell("L6").alignment = { horizontal: "right" };
-  if (buy) ws.getCell("L8").font = { ...helv10 };
-  if (hasJp) {
-    ws.getCell(`L${sum.jp}`).font = { ...helv10 };
-    ws.getCell(`L${sum.totalRtp}`).font = { ...helv10 };
-  }
   for (let row = info + 1; row <= info + 10; row += 1) {
     ws.getCell(`L${row}`).font = row > info + 6 ? { ...FONT_GROUP } : { ...helv10 };
   }
-  for (let row = 4; row <= last; row += 1) {
-    ws.getCell(`B${row}`).font = { ...helv8b };
-    ws.getCell(`B${row}`).alignment = { ...CENTER };
-    ws.getCell(`C${row}`).alignment = { ...CENTER };
-    for (const col of ["D", "E", "F", "G", "H", "I"]) {
-      ws.getCell(`${col}${row}`).font = { ...helv8 };
-    }
-  }
-  for (const col of ["E", "G", "I"]) ws.getCell(`${col}${tot}`).font = { ...helv8 };
-  applyNcNumberFormats(ws, last, tot, buy, hasJp);
-  for (let col = 2; col <= 9; col += 1) {
-    ws.getCell(last, col).border = cloneJson(MEDIUM_BOTTOM);
-  }
-  const confRow = info + 13;
-  applyConfidential(ws, `K${confRow}:N${confRow + 4}`, "Helv", 8);
-  ws.getRow(confRow).height = 18;
-  return { last, tot, fundCell, info };
+  return info;
 }
 
 function vaSummaryRows(buy, hasJp) {
@@ -1551,16 +1645,17 @@ export async function buildPack(buffer, filename, options = {}) {
   const source = frequencyWinningRows(freq);
   const ws = insertSheet(wb, PACK_SHEET);
   let built;
-  if (spec.layout === "NC") built = buildNcDelivery(ws, freq, meta, source);
-  else if (spec.layout === "VA") built = buildVaDelivery(ws, freq, meta, source);
+  if (spec.layout === "NC" || spec.layout === "DC") {
+    built = buildNcDelivery(ws, freq, meta, source, { pricePoints: options.pricePoints });
+  } else if (spec.layout === "VA") built = buildVaDelivery(ws, freq, meta, source);
   else built = buildGaDelivery(ws, freq, meta, source, packDateSerial(filename));
   if (meta.hasJp) {
     const pj = requireSheet(wb, "Progressive Jackpots");
-    if (spec.layout === "NC") {
-      const jpStart = built.tot + 2;
-      const summaryRows = ncSummaryRows(meta.buy, true);
-      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows), NC_WIDTHS);
-      linkJackpotSummary(ws, spec.layout, meta, jpStart);
+    if (spec.layout === "NC" || spec.layout === "DC") {
+      const jpStart = built.tot + (spec.layout === "DC" ? 3 : 2);
+      const widths = spec.layout === "DC" ? DC_WIDTHS : NC_WIDTHS;
+      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, built.sum), widths);
+      linkJackpotSummary(ws, meta, jpStart);
       built.jpStart = jpStart;
     } else if (spec.layout === "VA") {
       const jpStart = built.tot + 3;

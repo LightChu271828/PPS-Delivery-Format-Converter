@@ -6,7 +6,7 @@ server.
 
 **Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
-Pick the lottery first. Kentucky is a four-tab pack. NC, VA, GA, PA, and NH add one Delivery
+Pick the lottery first. Kentucky is a four-tab pack. NC, VA, DC, GA, PA, and NH add one Delivery
 sheet. Every source tab stays in the workbook.
 
 ## Kentucky
@@ -34,15 +34,17 @@ stops until the filename names the type.
 Win Methods FreePlay prizes are rewritten to ordinary `SUMPRODUCT(SUMIF(...))` formulas matched by
 Free Plays method identity, not CSE `{=SUM(VLOOKUP(...))}`.
 
-## NC, VA, GA, PA, NH
+## NC, VA, DC, GA, PA, NH
 
-One `Delivery` sheet is added to the uploaded PPS. The price grid is not used. PA and NH use the
-Georgia layout. Frequency rows whose Odds up is 0 are skipped.
+One `Delivery` sheet is added to the uploaded PPS. The Kentucky price grid is not used; DC has its
+own price-point picker. PA and NH use the Georgia layout. Frequency rows whose Odds up is 0 are
+skipped.
 
 | Lottery | Layout |
 | --- | --- |
 | NC | Frequency order from row 4. Summary in K/L beside the tiers. Bonus / Freeplay show `-` when that category is missing. |
 | VA | The NC table with the summary in B/C above it; the tier header sits three rows below Hit Rate. Delivery is placed right after Frequency. Side-bet hit rates go in E/F only when Frequency lists them. |
+| DC | The NC table and K/L summary, without Game info. The confidentiality notice sits three rows below Hit Rate, then a boxed game sheet: Total Tickets, Retail Price, Revenue, Prize Fund, Payout, Odds, Top Prize, Max Top Prize $ Value (top multiple × highest price point), Price Points, and value distribution by prize multiple. Delivery is placed right after Frequency. |
 | GA, PA, NH | Winning tiers sorted by prize, smallest first. Consolidated 1-in-X and `% of Prize Fund`. Bonus and Freeplay lines are always present. |
 
 JP RTP and Total RTP rows appear only for jackpot games. The Progressive Jackpots block is copied

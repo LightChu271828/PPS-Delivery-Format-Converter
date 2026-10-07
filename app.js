@@ -1,10 +1,12 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261007-3";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261007-4";
 import {
   buildPack,
   inspectPack,
   isPackLottery,
   packOutputFilename,
-} from "./pack-builder.js?v=20261007-3";
+  DC_PRICE_OPTIONS,
+  DC_DEFAULT_PRICE_POINTS,
+} from "./pack-builder.js?v=20261007-4";
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,6 +46,10 @@ function packMode() {
   return isPackLottery(state.lottery);
 }
 
+function dcMode() {
+  return state.lottery === "DC";
+}
+
 function show(el, on) {
   el.classList.toggle("hidden", !on);
   el.hidden = !on;
@@ -55,8 +61,8 @@ function syncLotteryUi() {
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
-  $("priceGrid").classList.toggle("hidden", packMode());
-  $("priceGrid").hidden = packMode();
+  show($("priceGrid"), !packMode());
+  show($("dcPriceGrid"), dcMode());
   $("buildBtn").textContent = packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
   const kyTabs = $("kyResultTabs");
   const packTabs = $("packResultTabs");
@@ -86,6 +92,7 @@ async function loadTemplates() {
 
 function canBuild() {
   if (!state.file || !state.inspect) return false;
+  if (dcMode()) return selectedDcPrices().length > 0;
   return packMode() || Boolean(state.templates);
 }
 
@@ -149,6 +156,14 @@ function renderInspect(info) {
     else bits.push("Winning tiers keep Frequency order.");
     if (info.layout === "VA" && info.sideHits?.length) {
       bits.push(`Side-bet hit rates: <b>${info.sideHits.length}</b>.`);
+    }
+    if (info.layout === "DC") {
+      const prices = selectedDcPrices();
+      bits.push(
+        prices.length
+          ? `Price points: <b>${prices.map((p) => `$${p.toFixed(2)}`).join(", ")}</b>. Max Top Prize uses $${prices[prices.length - 1].toFixed(2)}.`
+          : "Pick at least one price point.",
+      );
     }
     if (info.existingDelivery?.length) {
       bits.push(`Will replace existing ${info.existingDelivery.map((n) => `<code>${n}</code>`).join(", ")}.`);
@@ -222,6 +237,7 @@ async function build() {
     if (packMode()) {
       const { buffer, report } = await buildPack(state.buffer, state.file.name, {
         lottery: state.lottery,
+        pricePoints: dcMode() ? selectedDcPrices() : undefined,
       });
       state.output = buffer;
       state.outputName = packOutputFilename(state.file.name, state.lottery);
@@ -276,6 +292,22 @@ function resetPriceGrid() {
   document.querySelectorAll("#priceGridOptions input[type=checkbox]").forEach((el) => {
     el.checked = true;
   });
+  document.querySelectorAll("#dcPriceOptions input[type=checkbox]").forEach((el) => {
+    el.checked = DC_DEFAULT_PRICE_POINTS.includes(Number(el.value));
+  });
+}
+
+function renderDcPriceOptions() {
+  $("dcPriceOptions").innerHTML = DC_PRICE_OPTIONS.map(
+    (p) =>
+      `<label><input type="checkbox" value="${p}"${DC_DEFAULT_PRICE_POINTS.includes(p) ? " checked" : ""}> ${p}</label>`,
+  ).join("");
+}
+
+function selectedDcPrices() {
+  return [...document.querySelectorAll("#dcPriceOptions input[type=checkbox]:checked")]
+    .map((el) => Number(el.value))
+    .sort((a, b) => a - b);
 }
 
 function reset() {
@@ -335,12 +367,17 @@ $("resetBtn").addEventListener("click", reset);
 $("priceGridOptions").addEventListener("change", () => {
   if (state.inspect && !packMode()) renderInspect(state.inspect);
 });
+$("dcPriceOptions").addEventListener("change", () => {
+  if (state.inspect && dcMode()) renderInspect(state.inspect);
+  $("buildBtn").disabled = !canBuild();
+});
 document.querySelector(".markets").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-lottery]");
   if (!btn || btn.disabled) return;
   setLottery(btn.dataset.lottery);
 });
 
+renderDcPriceOptions();
 syncLotteryUi();
 loadTemplates()
   .then(() => {

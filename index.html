@@ -107,7 +107,8 @@
       color: var(--text-faint);
       margin-right: 4px;
     }
-    .pricegrid #priceGridOptions { display: contents; }
+    .pricegrid #priceGridOptions,
+    .pricegrid #dcPriceOptions { display: contents; }
     .pricegrid label {
       display: inline-flex;
       align-items: center;
@@ -210,7 +211,7 @@
       <div>
         <h1>PPS Delivery Format Converter</h1>
         <p>
-          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. NC and VA add one
+          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. NC, VA, and DC add one
           Delivery sheet in Frequency order. GA, PA, and NH sort winning tiers by prize. Every source
           tab stays in the workbook. Everything runs in this page.
         </p>
@@ -235,7 +236,7 @@
           <button type="button" disabled title="Coming soon">MI</button>
           <button type="button" data-lottery="GA" aria-pressed="false">GA</button>
           <button type="button" data-lottery="KY" class="on" aria-pressed="true">KY</button>
-          <button type="button" disabled title="Coming soon">DC</button>
+          <button type="button" data-lottery="DC" aria-pressed="false">DC</button>
           <button type="button" disabled title="Coming soon">ALC</button>
           <button type="button" disabled title="Coming soon">BCLC</button>
           <button type="button" disabled title="Coming soon">OLG</button>
@@ -252,6 +253,10 @@
             <label><input type="checkbox" value="30" checked> 30</label>
             <label><input type="checkbox" value="50" checked> 50</label>
           </span>
+        </div>
+        <div class="pricegrid hidden" id="dcPriceGrid" aria-label="DC price points" hidden>
+          <span>Price points</span>
+          <span id="dcPriceOptions"></span>
         </div>
         <div class="drop" id="drop" tabindex="0">
           <strong>Drop a PPS .xlsx here, or click to browse</strong>
@@ -296,7 +301,7 @@
               <tr><th>Tab</th><th>Role</th></tr>
             </thead>
             <tbody>
-              <tr><td>Delivery</td><td>NC and VA keep Frequency order. NC puts the Frequency summary to the right of the tiers; VA puts it above them. GA / PA / NH sort winning prizes smallest-first, with consolidated 1-in-X and % of prize fund. Rows with 0 Odds up are skipped. JP RTP and Total RTP rows appear only for jackpot games, linked to the copied Progressive Jackpots block.</td></tr>
+              <tr><td>Delivery</td><td>NC, VA, and DC keep Frequency order. NC puts the Frequency summary to the right of the tiers; VA puts it above them. DC uses the NC summary plus a game sheet with ticket price points and value distribution by prize multiple. GA / PA / NH sort winning prizes smallest-first, with consolidated 1-in-X and % of prize fund. Rows with 0 Odds up are skipped. JP RTP and Total RTP rows appear only for jackpot games, linked to the copied Progressive Jackpots block.</td></tr>
             </tbody>
           </table>
           <p class="note" style="margin-top:12px">
@@ -316,6 +321,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20261007-3"></script>
+  <script type="module" src="app.js?v=20261007-4"></script>
 </body>
 </html>
