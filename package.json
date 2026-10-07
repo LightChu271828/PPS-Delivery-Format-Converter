@@ -6,6 +6,6 @@
   "description": "PPS Delivery Format Converter — Kentucky four-tab and NC/GA/PA/NH Delivery sheets.",
   "scripts": {
     "start": "python -m http.server 8765",
-    "test": "node test-build.mjs && node test-pack.mjs"
+    "test": "node test-build.mjs && node test-pack.mjs && node test-va.mjs"
   }
 }

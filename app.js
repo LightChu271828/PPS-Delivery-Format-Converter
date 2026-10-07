@@ -1,10 +1,11 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261002-4";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261007-1";
 import {
   buildPack,
   inspectPack,
   isPackLottery,
   packOutputFilename,
-} from "./pack-builder.js?v=20261002-4";
+} from "./pack-builder.js?v=20261007-1";
+import { buildVa, inspectVaGame, vaOutputFilename, vaRole } from "./va-builder.js?v=20261007-1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,10 @@ const state = {
   output: null,
   outputName: null,
   lottery: "KY",
+  va: {
+    main: { file: null, buffer: null, inspect: null },
+    side: { file: null, buffer: null, inspect: null },
+  },
 };
 
 function toast(msg) {
@@ -44,25 +49,32 @@ function packMode() {
   return isPackLottery(state.lottery);
 }
 
+function vaMode() {
+  return state.lottery === "VA";
+}
+
+function show(el, on) {
+  el.classList.toggle("hidden", !on);
+  el.hidden = !on;
+}
+
 function syncLotteryUi() {
   document.querySelectorAll(".markets button[data-lottery]").forEach((btn) => {
     const on = btn.dataset.lottery === state.lottery;
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
-  $("priceGrid").classList.toggle("hidden", packMode());
-  $("priceGrid").hidden = packMode();
-  $("buildBtn").textContent = packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
+  $("priceGrid").classList.toggle("hidden", packMode() || vaMode());
+  $("priceGrid").hidden = packMode() || vaMode();
+  show($("drop"), !vaMode());
+  show($("vaFiles"), vaMode());
+  $("buildBtn").textContent = vaMode() ? "Build VA delivery" : packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
   const kyTabs = $("kyResultTabs");
   const packTabs = $("packResultTabs");
-  if (kyTabs) {
-    kyTabs.classList.toggle("hidden", packMode());
-    kyTabs.hidden = packMode();
-  }
-  if (packTabs) {
-    packTabs.classList.toggle("hidden", !packMode());
-    packTabs.hidden = !packMode();
-  }
+  const vaTabs = $("vaResultTabs");
+  if (kyTabs) show(kyTabs, !packMode() && !vaMode());
+  if (packTabs) show(packTabs, packMode());
+  if (vaTabs) show(vaTabs, vaMode());
 }
 
 async function fetchTemplate(name) {
@@ -74,11 +86,12 @@ async function fetchTemplate(name) {
 async function loadTemplates() {
   const pill = $("templateStatus");
   try {
-    const [mmj3, nojp] = await Promise.all([
+    const [mmj3, nojp, va] = await Promise.all([
       fetchTemplate("mmj3.xlsx"),
       fetchTemplate("no-jp.xlsx"),
+      fetchTemplate("va-delivery.xlsx"),
     ]);
-    state.templates = { mmj3, "no-jp": nojp };
+    state.templates = { mmj3, "no-jp": nojp, va };
     pill.textContent = "Templates ready";
     pill.className = "pill ok";
   } catch (err) {
@@ -89,6 +102,9 @@ async function loadTemplates() {
 }
 
 function canBuild() {
+  if (vaMode()) {
+    return Boolean(state.templates?.va && state.va.main.inspect && state.va.side.inspect);
+  }
   if (!state.file || !state.inspect) return false;
   return packMode() || Boolean(state.templates);
 }
@@ -108,6 +124,97 @@ function setFile(file) {
   $("resultBlock").hidden = true;
   $("buildBtn").disabled = true;
   $("statusHint").textContent = file ? "Reading Frequency…" : "Choose a PPS to inspect it before building.";
+}
+
+function clearVaSlot(slot) {
+  state.va[slot] = { file: null, buffer: null, inspect: null };
+  $(slot === "main" ? "vaMainLabel" : "vaSideLabel").textContent = "";
+}
+
+function vaFileLabel(slot) {
+  const item = state.va[slot];
+  const el = $(slot === "main" ? "vaMainLabel" : "vaSideLabel");
+  el.textContent = item.file ? `${item.file.name} · ${(item.file.size / 1024).toFixed(0)} KB` : "";
+}
+
+async function inspectVa() {
+  const main = state.va.main;
+  const side = state.va.side;
+  state.output = null;
+  state.outputName = null;
+  $("downloadBtn").disabled = true;
+  $("downloadBtn").classList.remove("ready");
+  $("resultBlock").classList.add("hidden");
+  $("resultBlock").hidden = true;
+  $("buildBtn").disabled = true;
+  if (!main.file || !side.file) {
+    $("inspectBlock").classList.add("hidden");
+    $("inspectBlock").hidden = true;
+    $("statusHint").textContent = main.file ? "Add the Side Bet PPS." : side.file ? "Add the Main Game PPS." : "Add the Main Game and Side Bet PPS files.";
+    return;
+  }
+  $("statusHint").textContent = "Reading both PPS files…";
+  try {
+    main.buffer = await main.file.arrayBuffer();
+    side.buffer = await side.file.arrayBuffer();
+    main.inspect = await inspectVaGame(main.buffer, main.file.name);
+    side.inspect = await inspectVaGame(side.buffer, side.file.name);
+    if (main.inspect.role === "side" && side.inspect.role === "main") {
+      const swap = state.va.main;
+      state.va.main = state.va.side;
+      state.va.side = swap;
+      vaFileLabel("main");
+      vaFileLabel("side");
+      toast("Swapped the two files to match Main Game and Side Bet");
+    } else if (vaRole(main.file.name, main.inspect.title) === "side" || vaRole(side.file.name, side.inspect.title) === "main") {
+      main.inspect = null;
+      side.inspect = null;
+      throw new Error("Put the Main Game PPS on the left and the Side Bet PPS on the right.");
+    }
+    renderVaInspect();
+    $("buildBtn").disabled = !canBuild();
+    $("statusHint").textContent = "Looks readable. Build the VA delivery, then download.";
+  } catch (err) {
+    $("inspectBlock").classList.remove("hidden");
+    $("inspectBlock").hidden = false;
+    $("inspectStats").innerHTML = stat("Failed", "Inspect", "bad");
+    $("inspectNote").className = "note bad";
+    $("inspectNote").innerHTML = `<b>${err.message}</b>`;
+    $("buildBtn").disabled = true;
+    $("statusHint").textContent = err.message;
+  }
+}
+
+function renderVaInspect() {
+  const main = state.va.main.inspect;
+  const side = state.va.side.inspect;
+  $("inspectBlock").classList.remove("hidden");
+  $("inspectBlock").hidden = false;
+  $("inspectStats").innerHTML = [
+    stat(main.tiers, "Main tiers"),
+    stat(side.tiers, "Side tiers"),
+    stat(pct(main.rtp), "Main RTP"),
+    stat(pct(side.rtp), "Side RTP"),
+    stat(fmt(main.hitRate, 2), "Main hit"),
+    stat(fmt(side.hitRate, 2), "Side hit"),
+  ].join("");
+  const bits = [];
+  bits.push(`<b>Main Game</b> ${main.title}. Pool <b>${fmt(main.pool, 0)}</b>, base <b>$${main.base}</b>.`);
+  bits.push(`<b>Side Bet</b> ${side.title}.`);
+  bits.push(`Side-bet hit rates on the main sheet: <b>${main.hits.length}</b>.`);
+  const zeros = (main.zeroFrequency || 0) + (side.zeroFrequency || 0);
+  if (zeros) bits.push(`Keeping ${zeros} tier row(s) with 0 Odds up.`);
+  if (!main.jackpot.length || !side.jackpot.length) bits.push("One of the files has no Progressive Jackpots block.");
+  $("inspectNote").className = "note";
+  $("inspectNote").innerHTML = bits.join(" ");
+}
+
+function setVaFile(slot, file) {
+  state.va[slot].file = file;
+  state.va[slot].buffer = null;
+  state.va[slot].inspect = null;
+  vaFileLabel(slot);
+  inspectVa();
 }
 
 async function inspectSelected() {
@@ -193,6 +300,19 @@ function renderResult(report) {
   $("resultBlock").classList.remove("hidden");
   $("resultBlock").hidden = false;
   syncLotteryUi();
+  if (vaMode()) {
+    const main = report.main;
+    const side = report.side;
+    $("resultStats").innerHTML = [
+      stat("VA", "Written as"),
+      stat(main.tiers, "Main tiers"),
+      stat(side.tiers, "Side tiers"),
+      stat(pct(main.actualRtp), "Main base RTP"),
+      stat(pct(side.actualRtp), "Side base RTP"),
+      stat(main.hits.length, "Side-bet hit rates"),
+    ].join("");
+    return;
+  }
   if (packMode()) {
     $("resultStats").innerHTML = [
       stat(report.layout, "Written as"),
@@ -215,6 +335,36 @@ function renderResult(report) {
 }
 
 async function build() {
+  if (vaMode()) {
+    if (!state.va.main.buffer || !state.va.side.buffer || !state.templates?.va) return;
+    $("buildBtn").disabled = true;
+    $("statusHint").textContent = "Building VA delivery…";
+    try {
+      const { buffer, report } = await buildVa(
+        state.va.main.buffer,
+        state.va.side.buffer,
+        state.va.main.file.name,
+        state.va.side.file.name,
+        { template: state.templates.va },
+      );
+      state.output = buffer;
+      state.outputName = vaOutputFilename(state.va.main.file.name);
+      renderResult(report);
+      $("downloadBtn").disabled = false;
+      $("downloadBtn").classList.add("ready");
+      $("statusHint").textContent = `Ready: ${state.outputName}`;
+      toast("VA delivery ready");
+    } catch (err) {
+      $("resultBlock").classList.remove("hidden");
+      $("resultBlock").hidden = false;
+      $("resultStats").innerHTML = stat("Failed", "Build", "bad");
+      $("statusHint").textContent = err.message;
+      toast(err.message);
+    } finally {
+      $("buildBtn").disabled = !canBuild();
+    }
+    return;
+  }
   if (!state.buffer) return;
   if (!packMode() && !state.templates) return;
   $("buildBtn").disabled = true;
@@ -281,7 +431,11 @@ function resetPriceGrid() {
 
 function reset() {
   $("file").value = "";
+  $("vaMainFile").value = "";
+  $("vaSideFile").value = "";
   resetPriceGrid();
+  clearVaSlot("main");
+  clearVaSlot("side");
   setFile(null);
   toast("Reset");
 }
@@ -296,6 +450,10 @@ function setLottery(id) {
   $("resultBlock").classList.add("hidden");
   $("resultBlock").hidden = true;
   syncLotteryUi();
+  if (vaMode()) {
+    if (state.va.main.file || state.va.side.file) inspectVa();
+    return;
+  }
   if (state.file) inspectSelected();
 }
 
@@ -334,7 +492,7 @@ $("buildBtn").addEventListener("click", build);
 $("downloadBtn").addEventListener("click", download);
 $("resetBtn").addEventListener("click", reset);
 $("priceGridOptions").addEventListener("change", () => {
-  if (state.inspect && !packMode()) renderInspect(state.inspect);
+  if (state.inspect && !packMode() && !vaMode()) renderInspect(state.inspect);
 });
 document.querySelector(".markets").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-lottery]");
@@ -342,12 +500,64 @@ document.querySelector(".markets").addEventListener("click", (e) => {
   setLottery(btn.dataset.lottery);
 });
 
+function assignVaPair(files) {
+  const main = files.find((file) => vaRole(file.name) === "main");
+  const side = files.find((file) => vaRole(file.name) === "side");
+  if (!main || !side) {
+    toast("Name the files MainGame and SideBet, or drop each one on its box.");
+    return;
+  }
+  state.va.main.file = main;
+  state.va.side.file = side;
+  state.va.main.inspect = null;
+  state.va.side.inspect = null;
+  vaFileLabel("main");
+  vaFileLabel("side");
+  inspectVa();
+}
+
+function bindVaDrop(dropEl, inputEl, slot) {
+  dropEl.addEventListener("click", () => inputEl.click());
+  dropEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") inputEl.click();
+  });
+  ["dragenter", "dragover"].forEach((ev) => {
+    dropEl.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dropEl.classList.add("drag");
+    });
+  });
+  ["dragleave", "drop"].forEach((ev) => {
+    dropEl.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dropEl.classList.remove("drag");
+    });
+  });
+  dropEl.addEventListener("drop", (e) => {
+    const files = [...(e.dataTransfer.files || [])];
+    if (files.length >= 2) {
+      assignVaPair(files);
+      return;
+    }
+    if (files[0]) setVaFile(slot, files[0]);
+  });
+  inputEl.addEventListener("change", () => {
+    const file = inputEl.files?.[0];
+    if (file) setVaFile(slot, file);
+  });
+}
+
+bindVaDrop($("vaMainDrop"), $("vaMainFile"), "main");
+bindVaDrop($("vaSideDrop"), $("vaSideFile"), "side");
+
 syncLotteryUi();
 loadTemplates()
   .then(() => {
-    if (state.inspect) $("buildBtn").disabled = !canBuild();
+    $("buildBtn").disabled = !canBuild();
   })
   .catch((err) => {
     $("statusHint").textContent = err.message;
-    if (packMode() && state.inspect) $("buildBtn").disabled = false;
+    if ((packMode() && state.inspect) || (vaMode() && state.va.main.inspect && state.va.side.inspect)) {
+      $("buildBtn").disabled = false;
+    }
   });
