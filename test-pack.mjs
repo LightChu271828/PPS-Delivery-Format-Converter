@@ -26,6 +26,7 @@ function assert(cond, msg) {
 function formulaOf(cell) {
   const v = cell?.value;
   if (v && typeof v === "object" && v.formula) return `=${v.formula}`;
+  if (v && typeof v === "object" && v.sharedFormula && cell.formula) return `=${cell.formula}`;
   if (typeof v === "string") return v;
   return v;
 }
@@ -34,7 +35,10 @@ const onedrive = path.join(process.env.USERPROFILE, "OneDrive - Instant Win Gami
 const outDir = path.join(root, "test-out");
 await mkdir(outDir, { recursive: true });
 
-assert(isPackLottery("NC") && isPackLottery("ga") && isPackLottery("PA") && isPackLottery("NH"), "pack lottery ids");
+assert(
+  isPackLottery("NC") && isPackLottery("ga") && isPackLottery("PA") && isPackLottery("NH") && isPackLottery("VA"),
+  "pack lottery ids",
+);
 assert(!isPackLottery("KY"), "KY is not a pack lottery");
 assert(excelSerialFromYymmdd("261002") === 46297, `261002 serial ${excelSerialFromYymmdd("261002")}`);
 assert(
@@ -74,10 +78,23 @@ assertPlainNumberFormats(piggyD, "PiggyBreaker");
 assert(formulaOf(piggyD.getCell("E4")) === `=F4-SUM(E5:E${4 + piggyInfo.winningTiers})`, `Piggy E4 ${formulaOf(piggyD.getCell("E4"))}`);
 assert(piggyD.getCell("F4").value === 2000000, `Piggy F4 ${piggyD.getCell("F4").value}`);
 assert(String(formulaOf(piggyD.getCell("I4"))).includes("L$9"), `Piggy I4 ${formulaOf(piggyD.getCell("I4"))}`);
-assert(piggyD.getCell("K15").value === "Game info for NC", `Piggy game info ${piggyD.getCell("K15").value}`);
+assert(piggyD.getCell("K16").value === "Game info for NC", `Piggy game info ${piggyD.getCell("K16").value}`);
+assert(String(piggyD.getCell("K29").value || "").includes("strictly confidential"), "Piggy confidential at K29");
 assert(String(formulaOf(piggyD.getCell("L8"))) === "=L6*L7", `Piggy revenue ${formulaOf(piggyD.getCell("L8"))}`);
 assert(String(formulaOf(piggyD.getCell("M11"))).includes("okay"), `Piggy flag ${formulaOf(piggyD.getCell("M11"))}`);
-assert(piggyD.getCell("A1").numFmt === "yymmdd", `Piggy A1 fmt ${piggyD.getCell("A1").numFmt}`);
+assert(piggyD.getCell("A1").value == null, `Piggy A1 ${piggyD.getCell("A1").value}`);
+const piggyLast = 4 + piggyInfo.winningTiers;
+for (const col of ["B", "C", "D", "E", "F", "G", "H", "I"]) {
+  assert(piggyD.getCell(`${col}3`).border?.bottom?.style === "medium", `Piggy ${col}3 underline`);
+  assert(piggyD.getCell(`${col}${piggyLast}`).border?.bottom?.style === "medium", `Piggy ${col}${piggyLast} underline`);
+}
+assert(piggyD.getCell("B2").font?.name === "Geneva", `Piggy B2 font ${JSON.stringify(piggyD.getCell("B2").font)}`);
+assert(piggyD.getCell("K2").font?.name === "Arial Black", `Piggy K2 font ${JSON.stringify(piggyD.getCell("K2").font)}`);
+for (const [addr, theme] of [["K17", 9], ["K18", 9], ["K19", 7], ["K20", 7]]) {
+  assert(piggyD.getCell(addr).fill?.fgColor?.theme === theme, `Piggy ${addr} fill ${JSON.stringify(piggyD.getCell(addr).fill)}`);
+}
+assert(piggyD.getCell("B5").numFmt === "00", `Piggy B5 fmt ${piggyD.getCell("B5").numFmt}`);
+assert(String(piggyD.getCell(`C${piggyLast}`).value || "").length > 0, "Piggy last method lost its value");
 assert(String(piggyD.getCell("C5").value || "").length > 0, "Piggy first method empty");
 assert(!String(piggyD.getCell("C5").value).includes(" x 1"), "Piggy method gained x 1");
 const piggyTab = piggyD.properties?.tabColor;
@@ -93,14 +110,34 @@ const vipBuilt = await buildPack(vipBuf, path.basename(vipPath), { lottery: "NC"
 const vipWb = await loadBuilt(vipBuilt.buffer);
 const vipD = vipWb.getWorksheet("Delivery");
 assertPlainNumberFormats(vipD, "VIPElite");
-assert(vipD.getCell("K12").value === "JP RTP:", `VIPElite K12 ${vipD.getCell("K12").value}`);
+assert(vipD.getCell("K12").value === "JP RTP", `VIPElite K12 ${vipD.getCell("K12").value}`);
+assert(vipD.getCell("K10").value === "RTP Setting ", `VIPElite K10 ${vipD.getCell("K10").value}`);
+assert(vipD.getCell("K14").value === "Winning Tiers Freq:", `VIPElite K14 ${vipD.getCell("K14").value}`);
 const vipJp = vipBuilt.report.delivery.jpStart;
 assert(vipD.getCell(vipJp, 2).value === "Base JP Odds Down", `VIPElite JP start ${vipD.getCell(vipJp, 2).value}`);
 assert(formulaOf(vipD.getCell("L12")) === `=C${vipJp + 28}+C${vipJp + 29}`, `VIPElite L12 ${formulaOf(vipD.getCell("L12"))}`);
 assert(!String(vipD.getCell(vipJp, 5).value || "").toLowerCase().includes("json"), "VIPElite copied json setup");
 assert(String(formulaOf(vipD.getCell(vipJp + 24, 3)) || "").includes("$L$15"), `VIPElite hit link ${formulaOf(vipD.getCell(vipJp + 24, 3))}`);
 assert(vipD.getCell("K13").value === "Total RTP:", `VIPElite K13 ${vipD.getCell("K13").value}`);
-assert(vipD.getCell("K17").value === "Game info for NC", `VIPElite game info ${vipD.getCell("K17").value}`);
+assert(vipD.getCell("K18").value === "Game info for NC", `VIPElite game info ${vipD.getCell("K18").value}`);
+assert(vipJp === 4 + vipInfo.winningTiers + 3, `VIPElite JP start ${vipJp}`);
+const vipSrc = await loadBuilt(vipBuf);
+const vipPj = vipSrc.getWorksheet("Progressive Jackpots");
+let vipStyled = 0;
+for (let r = 2; r <= 32; r += 1) {
+  for (let c = 2; c <= 4; c += 1) {
+    const src = vipPj.getCell(r, c);
+    const dst = vipD.getCell(vipJp + r - 2, c);
+    for (const edge of ["left", "right", "top", "bottom"]) {
+      assert((src.border?.[edge]?.style || null) === (dst.border?.[edge]?.style || null), `VIPElite JP border ${dst.address} ${edge}`);
+    }
+    if (src.fill?.pattern === "solid") {
+      assert(dst.fill?.fgColor?.theme === src.fill.fgColor?.theme, `VIPElite JP fill ${dst.address}`);
+      vipStyled += 1;
+    }
+  }
+}
+assert(vipStyled > 0, "VIPElite PJ has no fills to compare");
 await writeFile(path.join(outDir, packOutputFilename(path.basename(vipPath), "NC")), Buffer.from(vipBuilt.buffer));
 console.log("vipelite", vipInfo.winningTiers, "jp", true);
 
@@ -180,6 +217,99 @@ assert(
   "NH filename",
 );
 console.log("pa/nh layout ok");
+
+const mm5Path = path.join(onedrive, "VA", "260908_VA_MerryMatch5_PPS_086.xlsx");
+const mm5Buf = await readFile(mm5Path);
+const mm5Info = await inspectPack(mm5Buf, path.basename(mm5Path), "VA");
+assert(mm5Info.layout === "VA" && !mm5Info.hasJp && !mm5Info.buy, `MerryMatch5 info ${JSON.stringify(mm5Info.layout)}`);
+const mm5Built = await buildPack(mm5Buf, path.basename(mm5Path), { lottery: "VA" });
+const mm5Wb = await loadBuilt(mm5Built.buffer);
+const mm5D = mm5Wb.getWorksheet("Delivery");
+assertPlainNumberFormats(mm5D, "MerryMatch5");
+const mm5Src = await loadBuilt(mm5Buf);
+const mm5SrcNames = mm5Src.worksheets.map((ws) => ws.name);
+const mm5Names = mm5Wb.worksheets.map((ws) => ws.name);
+assert(mm5Names.length === mm5SrcNames.length, `MerryMatch5 lost tabs ${mm5Names}`);
+assert(mm5Names[0] === "Frequency" && mm5Names[1] === "Delivery", `MerryMatch5 order ${mm5Names}`);
+for (const name of mm5SrcNames) assert(mm5Names.includes(name), `MerryMatch5 dropped ${name}`);
+const mm5Ref = mm5Src.getWorksheet("Delivery");
+const mm5Tot = mm5Built.report.delivery.tot;
+assert(mm5Tot === 18 + mm5Info.winningTiers + 1, `MerryMatch5 total row ${mm5Tot}`);
+let mm5Diff = [];
+for (let r = 2; r <= mm5Tot; r += 1) {
+  for (let c = 2; c <= 9; c += 1) {
+    const a = formulaOf(mm5D.getCell(r, c));
+    const b = formulaOf(mm5Ref.getCell(r, c));
+    const same = a === b || (a == null && b == null) || (typeof a === "number" && typeof b === "number" && Math.abs(a - b) < 1e-9);
+    if (!same) mm5Diff.push(`${mm5D.getCell(r, c).address} ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+  }
+}
+assert(mm5Diff.length === 0, `MerryMatch5 differs from the reference Delivery:\n${mm5Diff.slice(0, 12).join("\n")}`);
+for (const col of ["B", "C", "D", "E", "F", "G", "H", "I"]) {
+  assert(mm5D.getCell(`${col}17`).border?.bottom?.style === "medium", `MerryMatch5 ${col}17 underline`);
+  assert(mm5D.getCell(`${col}${mm5Tot - 1}`).border?.bottom?.style === "medium", `MerryMatch5 ${col}${mm5Tot - 1} underline`);
+}
+assert(!mm5D.getCell("A1").value, "MerryMatch5 A1 should be empty");
+assert(String(mm5D.getCell("E9").value || "").includes("strictly confidential"), "MerryMatch5 confidential at E9");
+for (let r = 6; r <= 13; r += 1) {
+  assert(!/jp rtp|total rtp/i.test(String(mm5D.getCell(r, 2).value || "")), `MerryMatch5 has JP row at B${r}`);
+}
+assert(mm5D.properties?.tabColor?.theme === 5, "MerryMatch5 tab color");
+await assertSafePackage(mm5Built.buffer, "MerryMatch5");
+await writeFile(path.join(outDir, packOutputFilename(path.basename(mm5Path), "VA")), Buffer.from(mm5Built.buffer));
+console.log("merrymatch5", mm5Info.winningTiers, "matches reference");
+
+const goatDir = path.join(onedrive, "VA", "261006 Year of Fire Goat(SupremeJP)");
+const goatMainName = "261006_VA_YearOfFireGoatSupremeJP(MainGame)_PPS_084_003.xlsx";
+const goatMainBuf = await readFile(path.join(goatDir, goatMainName));
+const goatInfo = await inspectPack(goatMainBuf, goatMainName, "VA");
+assert(goatInfo.hasJp, "Fire Goat main should be JP");
+assert(goatInfo.winningTiers === 199, `Fire Goat main tiers ${goatInfo.winningTiers}`);
+assert(goatInfo.sideHits.length === 5, `Fire Goat side hits ${goatInfo.sideHits.length}`);
+const goatBuilt = await buildPack(goatMainBuf, goatMainName, { lottery: "VA" });
+const goatWb = await loadBuilt(goatBuilt.buffer);
+const goatD = goatWb.getWorksheet("Delivery");
+assertPlainNumberFormats(goatD, "FireGoat main");
+const goatSrc = await loadBuilt(goatMainBuf);
+assert(goatWb.worksheets.length === goatSrc.worksheets.length + 1, "Fire Goat lost tabs");
+assert(goatD.getCell("B12").value.trim().replace(/:$/, "") === "JP RTP", `Fire Goat B12 ${goatD.getCell("B12").value}`);
+assert(goatD.getCell("B13").value.trim().replace(/:$/, "") === "Total RTP", `Fire Goat B13 ${goatD.getCell("B13").value}`);
+assert(goatD.getCell("B19").value === "NUMBER", `Fire Goat B19 ${goatD.getCell("B19").value}`);
+const goatTot = goatBuilt.report.delivery.tot;
+const goatJp = goatBuilt.report.delivery.jpStart;
+assert(goatTot === 20 + 199 + 1 && goatJp === goatTot + 3, `Fire Goat rows ${goatTot} ${goatJp}`);
+assert(formulaOf(goatD.getCell("C12")) === `=C${goatJp + 28}+C${goatJp + 29}`, `Fire Goat C12 ${formulaOf(goatD.getCell("C12"))}`);
+assert(formulaOf(goatD.getCell("C13")) === "=C12+C11", `Fire Goat C13 ${formulaOf(goatD.getCell("C13"))}`);
+assert(goatD.getCell(goatJp, 3).value === 20000000, `Fire Goat JP odds ${goatD.getCell(goatJp, 3).value}`);
+assert(goatD.getCell(goatJp + 9, 13).value === 50, `Fire Goat M ${goatD.getCell(goatJp + 9, 13).value}`);
+assert(goatD.getCell(goatJp + 7, 2).fill?.fgColor?.theme === 5, "Fire Goat seed fill");
+assert(goatD.getCell(goatJp, 3).fill?.fgColor?.theme === 7, "Fire Goat JP input fill");
+assert(goatD.getCell(goatJp + 7, 2).border?.left?.style === "thin", "Fire Goat seed border");
+assert(goatD.getCell(goatJp + 6, 2).fill?.pattern !== "solid", "Fire Goat blank row has no fill");
+assert(String(formulaOf(goatD.getCell(goatJp + 25, 3))).includes("$C$6"), formulaOf(goatD.getCell(goatJp + 25, 3)));
+assert(!/Frequency/.test(String(formulaOf(goatD.getCell(goatJp + 25, 3)))), formulaOf(goatD.getCell(goatJp + 25, 3)));
+assert(String(goatD.getCell("E9").value).startsWith("Hit Rate(+"), `Fire Goat E9 ${goatD.getCell("E9").value}`);
+const goatF9 = String(formulaOf(goatD.getCell("F9")));
+assert(goatF9.includes("$C$15") && goatF9.includes("Frequency!$N$15"), `Fire Goat F9 ${goatF9}`);
+assert(String(goatD.getCell("H9").value || "").includes("strictly confidential"), "Fire Goat confidential at H9");
+await assertSafePackage(goatBuilt.buffer, "FireGoat main");
+await writeFile(path.join(outDir, packOutputFilename(goatMainName, "VA")), Buffer.from(goatBuilt.buffer));
+
+const goatSideName = "261006_VA_YearOfFireGoatSupremeJP(SideBet)_PPS_084_003.xlsx";
+const goatSideBuf = await readFile(path.join(goatDir, goatSideName));
+const sideBuilt = await buildPack(goatSideBuf, goatSideName, { lottery: "VA" });
+const sideWb = await loadBuilt(sideBuilt.buffer);
+const sideD = sideWb.getWorksheet("Delivery");
+assertPlainNumberFormats(sideD, "FireGoat side");
+assert(sideBuilt.report.hasJp, "Fire Goat side should be JP");
+const sideJp = sideBuilt.report.delivery.jpStart;
+assert(formulaOf(sideD.getCell("C12")) === `=C${sideJp + 28}+C${sideJp + 29}`, `Fire Goat side C12 ${formulaOf(sideD.getCell("C12"))}`);
+assert(!String(sideD.getCell("E9").value || "").startsWith("Hit Rate"), "Fire Goat side has no hit-rate block");
+assert(String(sideD.getCell("E9").value || "").includes("strictly confidential"), "Fire Goat side confidential at E9");
+assert(/hit rate/i.test(String(sideD.getCell("B15").value)), `Fire Goat side B15 ${sideD.getCell("B15").value}`);
+await assertSafePackage(sideBuilt.buffer, "FireGoat side");
+await writeFile(path.join(outDir, packOutputFilename(goatSideName, "VA")), Buffer.from(sideBuilt.buffer));
+console.log("fire goat", goatInfo.winningTiers, sideBuilt.report.winningTiers, "jp", goatJp, sideJp);
 
 async function assertSafePackage(buffer, label) {
   const book = await readZipText(buffer, "xl/workbook.xml");

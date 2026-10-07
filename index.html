@@ -210,9 +210,9 @@
       <div>
         <h1>PPS Delivery Format Converter</h1>
         <p>
-          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. Virginia writes one
-          delivery sheet from that file. NC keeps Frequency order on one Delivery sheet. GA, PA, and
-          NH sort winning tiers by prize. Everything runs in this page.
+          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. NC and VA add one
+          Delivery sheet in Frequency order. GA, PA, and NH sort winning tiers by prize. Every source
+          tab stays in the workbook. Everything runs in this page.
         </p>
       </div>
       <div class="btnrow">
@@ -291,20 +291,12 @@
               <tr><td>Prize Breakdown</td><td>Win Methods order, Pay Table matrix</td></tr>
             </tbody>
           </table>
-          <table id="vaResultTabs" class="hidden" hidden>
-            <thead>
-              <tr><th>Tab</th><th>Role</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Main Game or Side Bet</td><td>One sheet from the uploaded PPS. Frequency order, including 0 Odds up. Side-bet hit rates appear only when this file already lists them. Jackpot block follows the total row.</td></tr>
-            </tbody>
-          </table>
           <table id="packResultTabs" class="hidden" hidden>
             <thead>
               <tr><th>Tab</th><th>Role</th></tr>
             </thead>
             <tbody>
-              <tr><td>Delivery</td><td>NC keeps Frequency order. GA / PA / NH sort winning prizes smallest-first, with consolidated 1-in-X and % of prize fund. Bonus and Freeplay lines are always present. JP RTP is linked from Progressive Jackpots when Frequency has a JP RTP row.</td></tr>
+              <tr><td>Delivery</td><td>NC and VA keep Frequency order. NC puts the Frequency summary to the right of the tiers; VA puts it above them. GA / PA / NH sort winning prizes smallest-first, with consolidated 1-in-X and % of prize fund. Rows with 0 Odds up are skipped. JP RTP and Total RTP rows appear only for jackpot games, linked to the copied Progressive Jackpots block.</td></tr>
             </tbody>
           </table>
           <p class="note" style="margin-top:12px">
@@ -317,14 +309,13 @@
 
     <h2>What this does not do</h2>
     <p class="note">
-      It does not retune Frequency, RTP, or jackpot math. Virginia takes one PPS and downloads a
-      new workbook with one delivery sheet. Combined multi-price Delivery packs are not inputs —
+      It does not retune Frequency, RTP, or jackpot math. Combined multi-price Delivery packs are not inputs —
       upload the per-price PPS. Buy-feature packs are still one workbook per game. If ExcelJS
       cannot open a file, open it in Excel and Save As .xlsx first.
     </p>
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20261007-2"></script>
+  <script type="module" src="app.js?v=20261007-3"></script>
 </body>
 </html>

@@ -6,8 +6,8 @@ server.
 
 **Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
-Pick the lottery first. Kentucky is a four-tab pack. Virginia writes one sheet from one PPS.
-NC, GA, PA, and NH write one Delivery sheet.
+Pick the lottery first. Kentucky is a four-tab pack. NC, VA, GA, PA, and NH add one Delivery
+sheet. Every source tab stays in the workbook.
 
 ## Kentucky
 
@@ -34,28 +34,24 @@ stops until the filename names the type.
 Win Methods FreePlay prizes are rewritten to ordinary `SUMPRODUCT(SUMIF(...))` formulas matched by
 Free Plays method identity, not CSE `{=SUM(VLOOKUP(...))}`.
 
-## NC, GA, PA, NH
+## NC, VA, GA, PA, NH
 
-One `Delivery` sheet. The price grid is not used. PA and NH use the Georgia layout.
+One `Delivery` sheet is added to the uploaded PPS. The price grid is not used. PA and NH use the
+Georgia layout. Frequency rows whose Odds up is 0 are skipped.
 
 | Lottery | Layout |
 | --- | --- |
-| NC | Frequency order. Summary in K/L. Bonus / Freeplay show `-` when that category is missing. |
+| NC | Frequency order from row 4. Summary in K/L beside the tiers. Bonus / Freeplay show `-` when that category is missing. |
+| VA | The NC table with the summary in B/C above it; the tier header sits three rows below Hit Rate. Delivery is placed right after Frequency. Side-bet hit rates go in E/F only when Frequency lists them. |
 | GA, PA, NH | Winning tiers sorted by prize, smallest first. Consolidated 1-in-X and `% of Prize Fund`. Bonus and Freeplay lines are always present. |
 
-Jackpot RTP is linked from `Progressive Jackpots` when Frequency has a JP RTP row. Output name:
+JP RTP and Total RTP rows appear only for jackpot games. The Progressive Jackpots block is copied
+below the total row with its borders and fills, without the json setup form, and JP RTP links to
+it. Non-jackpot games have no JP rows. Output name:
 
 `{yymmdd}_{JUR}_{Game}(Delivery)_PPS_{rtp}.xlsx`
 
 Number formats are plain `#,##0`, `#,##0.00`, and `0.00%`. Accounting padding is stripped.
-
-## Virginia
-
-Upload one PPS. The download is a new workbook with one sheet: `Main Game`, or `Side Bet` when
-the file is a side bet. Games that have no side bet omit that block. When Frequency already lists
-side-bet hit rates, those rows are written on the same sheet. Frequency order is kept, including
-tiers whose Odds up is 0. The jackpot block is copied from Progressive Jackpots, without the json
-setup form. `(MainGame)` in the filename becomes `(Delivery)`. A side-bet file keeps `SideBet` in the download name.
 
 Buy-feature packs are still one workbook per game for now.
 

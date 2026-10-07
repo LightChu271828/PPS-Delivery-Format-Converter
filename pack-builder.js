@@ -1,7 +1,8 @@
 /**
- * NC / GA / PA / NH Delivery builder (browser + Node).
+ * NC / GA / PA / NH / VA Delivery builder (browser + Node).
  * Ports .cursor/skills/pps-delivery-conversion. One Delivery sheet, not KY four-tab.
- * PA and NH use the Georgia layout. Number formats are plain: no _ or * padding.
+ * PA and NH use the Georgia layout. VA is the NC layout with the Frequency summary
+ * above the tier table instead of beside it. Number formats are plain: no _ or * padding.
  */
 
 const ExcelJS = globalThis.ExcelJS;
@@ -13,6 +14,7 @@ export const PACK_LOTTERIES = {
   GA: { code: "GA", layout: "GA", name: "Georgia Lottery" },
   PA: { code: "PA", layout: "GA", name: "Pennsylvania Lottery" },
   NH: { code: "NH", layout: "GA", name: "New Hampshire Lottery" },
+  VA: { code: "VA", layout: "VA", name: "Virginia Lottery" },
 };
 
 export const PACK_SHEET = "Delivery";
@@ -21,7 +23,6 @@ const FMT_INT = "#,##0";
 const FMT_MONEY = "#,##0.00";
 const FMT_PCT = "0.00%";
 const FMT_HIT = "0.00";
-const FMT_DATE_NC = "yymmdd";
 const FMT_DATE_GA = "[$-409]mmmm d, yyyy";
 
 const CONFIDENTIAL =
@@ -32,7 +33,6 @@ const CONFIDENTIAL =
   "All other use is strictly prohibited.";
 
 const NC_WIDTHS = {
-  1: 13,
   2: 18.44,
   3: 68.66,
   4: 13.33,
@@ -67,9 +67,33 @@ const GA_WIDTHS = {
   16: 13,
 };
 
+const VA_WIDTHS = {
+  2: 25.89,
+  3: 55.33,
+  4: 13.33,
+  5: 12.66,
+  6: 15.33,
+  7: 17.66,
+  8: 14.78,
+  9: 12,
+};
+
 const MEDIUM_BOTTOM = {
   bottom: { style: "medium", color: { indexed: 64 } },
 };
+
+const TINT_80 = 0.7999816888943144;
+const FONT_TITLE = { name: "Arial Black", size: 10, bold: true };
+const FONT_GROUP = { name: "Geneva", size: 10 };
+const FONT_HELV8 = { name: "Helv", size: 8 };
+const FONT_HELV8B = { name: "Helv", size: 8, bold: true };
+const FONT_HELV10 = { name: "Helv", size: 10 };
+const FONT_HELV10B = { name: "Helv", size: 10, bold: true };
+const CENTER = { horizontal: "center" };
+
+function themeFill(theme) {
+  return { type: "pattern", pattern: "solid", fgColor: { theme, tint: TINT_80 } };
+}
 
 export function isPackLottery(id) {
   return Boolean(PACK_LOTTERIES[String(id || "").toUpperCase()]);
@@ -152,6 +176,42 @@ function cloneJson(obj) {
   }
 }
 
+function put(ws, addr, value, style = {}) {
+  const cell = typeof addr === "string" ? ws.getCell(addr) : ws.getCell(addr.row, addr.col);
+  cell.style = cloneJson(style) || {};
+  if (value !== undefined) setValue(ws, cell.address, value);
+  return cell;
+}
+
+function addBottomEdge(ws, row, fromCol, toCol) {
+  for (let col = fromCol; col <= toCol; col += 1) {
+    const cell = ws.getCell(row, col);
+    const value = cell.value;
+    const style = cloneJson(cell.style) || {};
+    style.border = { ...(style.border || {}), ...cloneJson(MEDIUM_BOTTOM) };
+    cell.style = style;
+    if (value != null) cell.value = value;
+  }
+}
+
+function hasFill(fill) {
+  return Boolean(fill && fill.type === "pattern" && fill.pattern && String(fill.pattern).toLowerCase() !== "none");
+}
+
+function hasBorder(border) {
+  return Boolean(border && ["left", "right", "top", "bottom"].some((edge) => border[edge]?.style));
+}
+
+function copyCellStyle(src, dst) {
+  const style = {};
+  if (src.font) style.font = cloneJson(src.font);
+  if (hasFill(src.fill)) style.fill = cloneJson(src.fill);
+  if (hasBorder(src.border)) style.border = cloneJson(src.border);
+  if (src.alignment) style.alignment = cloneJson(src.alignment);
+  if (src.numFmt && src.numFmt !== "General") style.numFmt = plainFormatCode(src.numFmt);
+  dst.style = style;
+}
+
 function insertSheet(wb, name) {
   const existing = sheet(wb, name);
   if (existing) wb.removeWorksheet(existing.id);
@@ -160,6 +220,12 @@ function insertSheet(wb, name) {
 
 function labelText(freq, row) {
   return String(cellResult(freq.getCell(row, 13)) || "").trim();
+}
+
+function storedLabel(freq, row, fallback) {
+  if (!row) return fallback;
+  const text = cellResult(freq.getCell(row, 13));
+  return text == null || text === "" ? fallback : String(text);
 }
 
 function findLabelRow(freq, test) {
@@ -270,9 +336,10 @@ function applyConfidential(ws, range, fontName, size = 8) {
   cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 }
 
-function orderPackSheets(wb) {
+function orderPackSheets(wb, layout) {
   const byName = Object.fromEntries(wb.worksheets.map((ws) => [ws.name, ws]));
-  const head = ["Frequency", "Progressive Jackpots", PACK_SHEET].map((n) => byName[n]).filter(Boolean);
+  const names = layout === "VA" ? ["Frequency", PACK_SHEET] : ["Frequency", "Progressive Jackpots", PACK_SHEET];
+  const head = names.map((n) => byName[n]).filter(Boolean);
   const skip = new Set(head);
   const tail = wb.worksheets.filter((ws) => !skip.has(ws));
   const list = [...head, ...tail];
@@ -352,12 +419,29 @@ function lookupMeta(freq, lottery) {
     NaN,
   );
   const hasJp = Boolean(findLabelRow(freq, (l) => startsWithCi(l, "jp rtp")));
+  const hitRow =
+    findLabelRow(freq, (l) => /^hit rate\s*(:|\(main game\))/i.test(l)) ||
+    findLabelRow(freq, (l) => /hit rate/i.test(l) && !/^hit rate\s*\(\+/i.test(l));
   const freqRows = {
     pool: findLabelRow(freq, (l) => startsWithCi(l, "odds down")) || 6,
+    base: findLabelRow(freq, (l) => /^base\s*:?$/i.test(l)),
+    rrp: rrpRow,
+    revenue: findLabelRow(freq, (l) => startsWithCi(l, "revenu")),
+    fund: findLabelRow(freq, (l) => startsWithCi(l, "prize fund")),
     rtp: findLabelRow(freq, (l) => startsWithCi(l, "rtp setting")) || 10,
+    actual: findLabelRow(freq, (l) => /^(actual|base) rtp/i.test(l)),
+    jp: findLabelRow(freq, (l) => startsWithCi(l, "jp rtp")),
+    total: findLabelRow(freq, (l) => startsWithCi(l, "total rtp")),
     wins: findLabelRow(freq, (l) => startsWithCi(l, "winning tiers")) || 14,
-    hit: findLabelRow(freq, (l) => startsWithCi(l, "hit rate")) || 15,
+    hit: hitRow || 15,
   };
+  const hits = [];
+  for (let row = 1; row <= 40; row += 1) {
+    const label = labelText(freq, row);
+    if (!/^hit rate\s*\(\+/i.test(label)) continue;
+    const formula = cellFormula(freq.getCell(row, 14));
+    if (formula) hits.push({ row, label: storedLabel(freq, row, label), formula });
+  }
   return {
     spec,
     jurisdiction: String(jurisdiction || spec.name),
@@ -369,6 +453,8 @@ function lookupMeta(freq, lottery) {
     rtp,
     hasJp,
     freqRows,
+    hits,
+    jpRtpFormula: freqRows.jp ? cellFormula(freq.getCell(freqRows.jp, 14)) : null,
   };
 }
 
@@ -405,8 +491,14 @@ function shiftFormula(formula, dCol, dRow) {
 
 function jackpotFreqMap(layout, meta, rows) {
   const map = new Map();
-  const { pool, rtp, wins, hit } = meta.freqRows;
-  if (layout === "NC") {
+  const { pool, rtp, wins, hit, actual } = meta.freqRows;
+  if (layout === "VA") {
+    map.set(`N${pool}`, "$C$6");
+    map.set(`N${rtp}`, `$C$${rows.rtpSet}`);
+    if (actual) map.set(`N${actual}`, `$C$${rows.actual}`);
+    map.set(`N${wins}`, `$C$${rows.winFreq}`);
+    map.set(`N${hit}`, `$C$${rows.hit}`);
+  } else if (layout === "NC") {
     map.set(`N${pool}`, "$L$6");
     map.set(`N${rtp}`, `$L$${rows.rtpSet}`);
     map.set(`N${wins}`, `$L$${rows.winFreq}`);
@@ -428,37 +520,62 @@ function rewriteJackpotFormula(formula, dRow, freqMap) {
   return shiftFormula(localized.replace(/^=/, ""), 0, dRow);
 }
 
-function copyJackpotSetting(ws, pj, jpStart, freqMap) {
+function copyJackpotSetting(ws, pj, jpStart, freqMap, ownWidths = {}) {
   const dRow = jpStart - 2;
   const maxRow = Math.min(pj.rowCount || 32, 80);
   const maxCol = Math.min(Math.max(pj.columnCount || 24, 24), 30);
   for (let srcRow = 2; srcRow <= maxRow; srcRow += 1) {
     const dstRow = jpStart + (srcRow - 2);
+    const height = pj.getRow(srcRow).height;
+    if (height) ws.getRow(dstRow).height = height;
     for (let col = 2; col <= maxCol; col += 1) {
       if (srcRow <= 7 && col >= 5) continue;
       const src = pj.getCell(srcRow, col);
       const raw = src.value;
-      if (raw == null || raw === "") continue;
+      const empty = raw == null || raw === "";
+      if (empty && !hasBorder(src.border) && !hasFill(src.fill)) continue;
       const text = cellResult(src);
       if (typeof text === "string" && /json setup/i.test(text)) continue;
       const dst = ws.getCell(dstRow, col);
+      copyCellStyle(src, dst);
+      if (empty) continue;
       const formula = cellFormula(src);
       if (formula) dst.value = { formula: rewriteJackpotFormula(formula, dRow, freqMap) };
       else dst.value = text;
-      const fmt = src.numFmt && src.numFmt !== "General" ? plainFormatCode(src.numFmt) : null;
-      if (fmt) dst.numFmt = fmt;
-      if (src.font && (src.font.name || src.font.size || src.font.bold)) {
-        dst.font = {
-          name: src.font.name,
-          size: src.font.size,
-          bold: Boolean(src.font.bold),
-          italic: Boolean(src.font.italic),
-          ...(src.font.color ? { color: cloneJson(src.font.color) } : {}),
-        };
-      }
     }
   }
+  for (let col = 2; col <= maxCol; col += 1) {
+    if (ownWidths[col]) continue;
+    const width = pj.getColumn(col).width;
+    if (width) ws.getColumn(col).width = width;
+  }
   return jpStart;
+}
+
+function hasJackpotSetting(pj) {
+  if (!pj) return false;
+  for (let row = 2; row <= 32; row += 1) {
+    for (let col = 2; col <= 4; col += 1) {
+      const v = pj.getCell(row, col).value;
+      if (v != null && v !== "") return true;
+    }
+  }
+  return false;
+}
+
+function resolveJackpot(wb, spec, meta) {
+  if (spec.layout === "VA" && meta.hasJp) {
+    meta.hasJp = hasJackpotSetting(sheet(wb, "Progressive Jackpots"));
+  }
+  return meta;
+}
+
+function rewritePjRefs(formula, dRow) {
+  const text = String(formula || "").replace(/^=/, "");
+  if (!/Progressive Jackpots'?!/i.test(text)) return "";
+  return text.replace(/'?Progressive Jackpots'?!(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?)/gi, (_, ref) =>
+    ref.replace(/\$?([A-Z]{1,3})\$?(\d+)/g, (_m, col, row) => `${col}${Number(row) + dRow}`),
+  );
 }
 
 function linkJackpotSummary(ws, layout, meta, jpStart) {
@@ -764,13 +881,14 @@ function ncSummaryRows(buy, hasJp) {
     totalRtp: hasJp ? 13 + (buy ? 1 : 0) : null,
     winFreq: 12 + insert,
     hit: 13 + insert,
-    gameInfo: 15 + insert,
+    gameInfo: 16 + insert,
   };
 }
 
 function applyNcNumberFormats(ws, last, tot, buy, hasJp) {
   const sum = ncSummaryRows(buy, hasJp);
   for (let row = 4; row <= last; row += 1) {
+    ws.getCell(`B${row}`).numFmt = "00";
     ws.getCell(`D${row}`).numFmt = FMT_MONEY;
     ws.getCell(`E${row}`).numFmt = FMT_INT;
     ws.getCell(`F${row}`).numFmt = FMT_INT;
@@ -778,11 +896,11 @@ function applyNcNumberFormats(ws, last, tot, buy, hasJp) {
     ws.getCell(`H${row}`).numFmt = FMT_MONEY;
     ws.getCell(`I${row}`).numFmt = FMT_PCT;
   }
-  ws.getCell(`E${tot}`).numFmt = FMT_INT;
+  ws.getCell(`E${tot}`).numFmt = FMT_MONEY;
   ws.getCell(`G${tot}`).numFmt = FMT_MONEY;
   ws.getCell(`I${tot}`).numFmt = FMT_PCT;
   ws.getCell("L6").numFmt = FMT_INT;
-  ws.getCell("L7").numFmt = "0";
+  ws.getCell("L7").numFmt = FMT_MONEY;
   if (buy) ws.getCell("L8").numFmt = "0";
   ws.getCell(`L${sum.revenue}`).numFmt = FMT_MONEY;
   ws.getCell(`L${sum.fund}`).numFmt = FMT_MONEY;
@@ -791,11 +909,10 @@ function applyNcNumberFormats(ws, last, tot, buy, hasJp) {
   if (sum.jp) ws.getCell(`L${sum.jp}`).numFmt = FMT_PCT;
   if (sum.totalRtp) ws.getCell(`L${sum.totalRtp}`).numFmt = FMT_PCT;
   ws.getCell(`L${sum.winFreq}`).numFmt = FMT_INT;
-  ws.getCell(`L${sum.hit}`).numFmt = FMT_HIT;
-  ws.getCell("A1").numFmt = FMT_DATE_NC;
+  ws.getCell(`L${sum.hit}`).numFmt = FMT_MONEY;
 }
 
-function buildNcDelivery(ws, freq, meta, source, dateSerial) {
+function buildNcDelivery(ws, freq, meta, source) {
   const { nonwin, rows } = source;
   const last = 4 + rows.length;
   const tot = last + 1;
@@ -814,8 +931,6 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
   const helv10 = { name: "Helv", size: 10 };
 
   setColWidths(ws, NC_WIDTHS);
-  setValue(ws, "A1", dateSerial).numFmt = FMT_DATE_NC;
-  ws.getCell("A1").font = { ...helv8 };
 
   setValue(ws, "B2", "TIER");
   setValue(ws, "B3", "NUMBER");
@@ -830,9 +945,20 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
   setValue(ws, "H3", "1 in X odds");
   setValue(ws, "I2", "% OF ");
   setValue(ws, "I3", "PRIZE FUND");
-  for (const addr of ["B2", "B3", "C3", "D3", "E2", "E3", "F2", "F3", "G2", "G3", "H3", "I2", "I3"]) {
-    ws.getCell(addr).font = { ...helv8b };
+  for (const addr of ["B2", "E2", "F2", "G2"]) {
+    ws.getCell(addr).font = { ...FONT_GROUP };
+    ws.getCell(addr).alignment = { ...CENTER };
   }
+  ws.getCell("I2").font = { ...FONT_GROUP, bold: true };
+  ws.getCell("I2").alignment = { ...CENTER };
+  for (const addr of ["B3", "C3", "D3", "E3", "F3", "G3", "H3", "I3"]) {
+    ws.getCell(addr).font = { ...helv8b };
+    ws.getCell(addr).alignment = { ...CENTER };
+    ws.getCell(addr).border = cloneJson(MEDIUM_BOTTOM);
+  }
+  ws.getRow(2).height = 16.2;
+  ws.getRow(3).height = 16.8;
+  ws.getRow(4).height = 16.2;
 
   setValue(ws, "B4", 0);
   setValue(ws, "C4", nonwin.method == null ? 0 : nonwin.method);
@@ -861,26 +987,28 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
   setValue(ws, `G${tot}`, `=SUM(G4:G${last})`);
   setValue(ws, `I${tot}`, `=G${tot}/${fundCell}`);
 
-  setValue(ws, "K2", "Prize Structure").font = { ...helv8b };
-  setValue(ws, "K3", meta.jurisdiction).font = { ...helv8b };
-  setValue(ws, "K4", meta.title).font = { ...helv8b };
+  setValue(ws, "K2", "Prize Structure").font = { ...FONT_TITLE };
+  setValue(ws, "K3", meta.jurisdiction).font = { ...FONT_TITLE };
+  setValue(ws, "K4", meta.title).font = { ...FONT_TITLE };
+  const fr = meta.freqRows;
   const kLabels = [
-    [6, "Odds Down (ticket quantity if pool based):"],
-    [7, "Base:"],
+    [6, fr.pool, "Odds Down (ticket quantity if pool based):"],
+    [7, fr.base, "Base:"],
   ];
-  if (buy) kLabels.push([8, "RRP(x):"]);
+  if (buy) kLabels.push([8, fr.rrp, "RRP(x):"]);
   kLabels.push(
-    [sum.revenue, "Revenus (if pool based):"],
-    [sum.fund, "Prize Fund (if pool based):"],
-    [sum.rtpSet, "RTP Setting:"],
-    [sum.actual, "Actual RTP:"],
+    [sum.revenue, fr.revenue, "Revenus (if pool based):"],
+    [sum.fund, fr.fund, "Prize Fund (if pool based):"],
+    [sum.rtpSet, fr.rtp, "RTP Setting:"],
+    [sum.actual, fr.actual, "Actual RTP:"],
   );
   if (hasJp) {
-    kLabels.push([sum.jp, "JP RTP:"], [sum.totalRtp, "Total RTP:"]);
+    kLabels.push([sum.jp, fr.jp, "JP RTP:"], [sum.totalRtp, fr.total, "Total RTP:"]);
   }
-  kLabels.push([sum.winFreq, "Winning Tiers Freq"], [sum.hit, "Hit Rate:"]);
-  for (const [row, text] of kLabels) {
-    setValue(ws, `K${row}`, text).font = { ...helv8b };
+  kLabels.push([sum.winFreq, fr.wins, "Winning Tiers Freq"], [sum.hit, fr.hit, "Hit Rate:"]);
+  for (const [row, freqRow, fallback] of kLabels) {
+    setValue(ws, `K${row}`, storedLabel(freq, freqRow, fallback)).font = { ...helv8b };
+    ws.getCell(`K${row}`).alignment = { horizontal: "left" };
   }
 
   setValue(ws, "L6", meta.pool);
@@ -907,7 +1035,8 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
   setValue(ws, `L${sum.hit}`, `=${poolCell}/L${sum.hit - 1}`);
 
   const info = sum.gameInfo;
-  setValue(ws, `K${info}`, `Game info for ${meta.spec.code}`).font = { ...helv8b };
+  setValue(ws, `K${info}`, `Game info for ${meta.spec.code}`).font = { ...FONT_HELV10B };
+  ws.getCell(`K${info}`).alignment = { horizontal: "left" };
   const infoLabels = [
     [info + 1, "Bonus Odds"],
     [info + 2, "Avg. Bonus Prize"],
@@ -922,7 +1051,10 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
   ];
   for (const [row, text] of infoLabels) {
     setValue(ws, `K${row}`, text).font = { ...helv8b };
+    ws.getCell(`K${row}`).alignment = { horizontal: "left" };
   }
+  for (const row of [info + 1, info + 2]) ws.getCell(`K${row}`).fill = themeFill(9);
+  for (const row of [info + 3, info + 4]) ws.getCell(`K${row}`).fill = themeFill(7);
   setValue(
     ws,
     `L${info + 1}`,
@@ -967,31 +1099,171 @@ function buildNcDelivery(ws, freq, meta, source, dateSerial) {
     `=IFERROR(SUMPRODUCT((${drng}/$L$7>=25)*(${grng}))/${bandDen},0)`,
   );
   for (let row = info + 1; row <= info + 6; row += 1) {
-    ws.getCell(`L${row}`).numFmt = row === info + 6 ? FMT_MONEY : FMT_HIT;
+    ws.getCell(`L${row}`).numFmt = FMT_MONEY;
   }
   for (let row = info + 7; row <= info + 10; row += 1) {
     ws.getCell(`L${row}`).numFmt = FMT_PCT;
   }
 
   for (const addr of ["L6", "L7", `L${sum.revenue}`, `L${sum.fund}`, `L${sum.rtpSet}`, `L${sum.actual}`, `L${sum.winFreq}`, `L${sum.hit}`]) {
-    ws.getCell(addr).font = { ...helv8 };
+    ws.getCell(addr).font = { ...helv10 };
   }
-  if (buy) ws.getCell("L8").font = { ...helv8 };
+  ws.getCell("L6").alignment = { horizontal: "right" };
+  if (buy) ws.getCell("L8").font = { ...helv10 };
   if (hasJp) {
-    ws.getCell(`L${sum.jp}`).font = { ...helv8 };
-    ws.getCell(`L${sum.totalRtp}`).font = { ...helv8 };
+    ws.getCell(`L${sum.jp}`).font = { ...helv10 };
+    ws.getCell(`L${sum.totalRtp}`).font = { ...helv10 };
+  }
+  for (let row = info + 1; row <= info + 10; row += 1) {
+    ws.getCell(`L${row}`).font = row > info + 6 ? { ...FONT_GROUP } : { ...helv10 };
   }
   for (let row = 4; row <= last; row += 1) {
-    for (const col of ["B", "D", "E", "F", "G", "H", "I"]) {
-      const cell = ws.getCell(`${col}${row}`);
-      cell.font = { ...helv8 };
+    ws.getCell(`B${row}`).font = { ...helv8b };
+    ws.getCell(`B${row}`).alignment = { ...CENTER };
+    ws.getCell(`C${row}`).alignment = { ...CENTER };
+    for (const col of ["D", "E", "F", "G", "H", "I"]) {
+      ws.getCell(`${col}${row}`).font = { ...helv8 };
     }
   }
+  for (const col of ["E", "G", "I"]) ws.getCell(`${col}${tot}`).font = { ...helv8 };
   applyNcNumberFormats(ws, last, tot, buy, hasJp);
-  const confRow = info + 14;
+  for (let col = 2; col <= 9; col += 1) {
+    ws.getCell(last, col).border = cloneJson(MEDIUM_BOTTOM);
+  }
+  const confRow = info + 13;
   applyConfidential(ws, `K${confRow}:N${confRow + 4}`, "Helv", 8);
   ws.getRow(confRow).height = 18;
   return { last, tot, fundCell, info };
+}
+
+function vaSummaryRows(buy, hasJp) {
+  const b = buy ? 1 : 0;
+  const j = hasJp ? 2 : 0;
+  return {
+    pool: 6,
+    base: 7,
+    rrp: buy ? 8 : null,
+    revenue: 8 + b,
+    fund: 9 + b,
+    rtpSet: 10 + b,
+    actual: 11 + b,
+    jp: hasJp ? 12 + b : null,
+    totalRtp: hasJp ? 13 + b : null,
+    winFreq: 12 + b + j,
+    hit: 13 + b + j,
+  };
+}
+
+function vaHitFormula(formula, meta, sum) {
+  return String(formula)
+    .replace(/^=/, "")
+    .replace(/(^|[^A-Za-z0-9!'$])(\$?)N(\$?)(\d+)/g, (_, pre, _c, _r, row) => {
+      const r = Number(row);
+      return r === meta.freqRows.hit ? `${pre}$C$${sum.hit}` : `${pre}Frequency!$N$${r}`;
+    });
+}
+
+function buildVaDelivery(ws, freq, meta, source) {
+  const { nonwin, rows } = source;
+  const fr = meta.freqRows;
+  const sum = vaSummaryRows(meta.buy, meta.hasJp);
+  const group = sum.hit + 3;
+  const sub = group + 1;
+  const nw = group + 2;
+  const first = nw + 1;
+  const last = nw + rows.length;
+  const tot = last + 1;
+  const hits = meta.hits || [];
+  const widths = {
+    ...VA_WIDTHS,
+    ...(hits.length ? { 5: 20.66 } : {}),
+    ...(meta.hasJp ? {} : { 10: 12, 11: 37.11 }),
+  };
+  setColWidths(ws, widths);
+
+  const label = { font: FONT_HELV8B, alignment: { horizontal: "left" } };
+  const value = (numFmt) => ({ font: FONT_HELV10, numFmt });
+
+  put(ws, "B2", "Prize Structure", { font: FONT_TITLE });
+  put(ws, "B3", meta.jurisdiction, { font: FONT_TITLE });
+  put(ws, "B4", meta.title, { font: FONT_TITLE });
+  for (const row of [2, 3, 4]) ws.getRow(row).height = 16.2;
+
+  const lines = [
+    [sum.pool, fr.pool, "Odds Down (ticket quantity if pool based):", meta.pool, { ...value(FMT_INT), alignment: { horizontal: "right" } }],
+    [sum.base, fr.base, "Base:", meta.base, value(FMT_MONEY)],
+  ];
+  if (meta.buy) lines.push([sum.rrp, fr.rrp, "RRP(x):", meta.rrp, value(FMT_MONEY)]);
+  lines.push(
+    [sum.revenue, fr.revenue, "Revenus (if pool based):", meta.buy ? "=C6*C7*C8" : "=C6*C7", value(FMT_MONEY)],
+    [sum.fund, fr.fund, "Prize Fund (if pool based):", `=G${tot}`, value(FMT_MONEY)],
+    [sum.rtpSet, fr.rtp, "RTP Setting", meta.rtp, value(FMT_PCT)],
+    [sum.actual, fr.actual, "Actual RTP:", `=SUM(G${first}:G${last})/C${sum.revenue}`, value(FMT_PCT)],
+  );
+  if (meta.hasJp) {
+    lines.push(
+      [sum.jp, fr.jp, "JP RTP", "=0", value(FMT_PCT)],
+      [sum.totalRtp, fr.total, "Total RTP", `=C${sum.jp}+C${sum.actual}`, value(FMT_PCT)],
+    );
+  }
+  lines.push(
+    [sum.winFreq, fr.wins, "Winning Tiers Freq", `=SUM(E${first}:E${last})`, value(FMT_INT)],
+    [sum.hit, fr.hit, "Hit Rate:", `=C6/C${sum.winFreq}`, value(FMT_MONEY)],
+  );
+  for (const [row, freqRow, fallback, v, style] of lines) {
+    put(ws, `B${row}`, storedLabel(freq, freqRow, fallback), label);
+    put(ws, `C${row}`, v, style);
+  }
+
+  hits.forEach((hit, idx) => {
+    const row = 9 + idx;
+    put(ws, `E${row}`, hit.label, label);
+    put(ws, `F${row}`, `=${vaHitFormula(hit.formula, meta, sum)}`, { font: FONT_HELV8, numFmt: FMT_MONEY });
+  });
+
+  const groupTexts = { B: "TIER", E: "ODDS", F: "ODDS", G: "PRIZE", I: "% OF " };
+  for (const [col, text] of Object.entries(groupTexts)) {
+    put(ws, `${col}${group}`, text, { font: col === "I" ? { ...FONT_GROUP, bold: true } : FONT_GROUP, alignment: CENTER });
+  }
+  const subTexts = ["NUMBER", "WIN METHOD", "PRIZE", "UP", "DOWN", "COST", "1 in X odds", "PRIZE FUND"];
+  subTexts.forEach((text, idx) => {
+    put(ws, { row: sub, col: 2 + idx }, text, { font: FONT_HELV8B, alignment: CENTER, border: MEDIUM_BOTTOM });
+  });
+  ws.getRow(group).height = 16.8;
+  ws.getRow(sub).height = 16.8;
+  ws.getRow(nw).height = 16.2;
+
+  const tierStyle = { font: FONT_HELV8B, alignment: CENTER, numFmt: "00" };
+  const num = (numFmt) => ({ font: FONT_HELV8, numFmt });
+  put(ws, `B${nw}`, 0, tierStyle);
+  put(ws, `C${nw}`, nonwin.method == null ? 0 : nonwin.method, { alignment: CENTER });
+  applyMethodFill(ws.getCell(`C${nw}`), nonwin.fill, FONT_HELV10);
+  put(ws, `D${nw}`, cleanFloat(nonwin.prize), num(FMT_MONEY));
+  put(ws, `E${nw}`, `=F${nw}-SUM(E${first}:E${last})`, num(FMT_INT));
+  put(ws, `F${nw}`, "=$C$6", num(FMT_INT));
+  put(ws, `G${nw}`, `=E${nw}*D${nw}`, num(FMT_MONEY));
+  put(ws, `H${nw}`, `=F${nw}/E${nw}`, num(FMT_MONEY));
+
+  rows.forEach((item, idx) => {
+    const row = first + idx;
+    put(ws, `B${row}`, item.tier, tierStyle);
+    put(ws, `C${row}`, item.method, { alignment: CENTER });
+    applyMethodFill(ws.getCell(`C${row}`), item.fill, FONT_HELV10);
+    put(ws, `D${row}`, item.prize, num(FMT_MONEY));
+    put(ws, `E${row}`, item.winners, num(FMT_INT));
+    put(ws, `F${row}`, "=$C$6", num(FMT_INT));
+    put(ws, `G${row}`, `=E${row}*D${row}`, num(FMT_MONEY));
+    put(ws, `H${row}`, `=F${row}/E${row}`, num(FMT_MONEY));
+    put(ws, `I${row}`, `=G${row}/C$${sum.fund}`, num(FMT_PCT));
+  });
+  addBottomEdge(ws, last, 2, 9);
+
+  put(ws, `E${tot}`, `=SUM(E${nw}:E${last})`, num(FMT_MONEY));
+  put(ws, `G${tot}`, `=SUM(G${nw}:G${last})`, num(FMT_MONEY));
+  put(ws, `I${tot}`, `=SUM(I${nw}:I${last})`, num(FMT_PCT));
+
+  applyConfidential(ws, hits.length ? "H9:K13" : "E9:H13", "Helv", 8);
+  return { last, tot, first, sum, widths };
 }
 
 function gaLeftRow(hasJp) {
@@ -1235,7 +1507,7 @@ export async function inspectPack(buffer, filename = "upload.xlsx", lottery = "N
   if (!spec) throw new Error(`Unsupported pack lottery: ${lottery}`);
   const wb = await loadWorkbook(buffer);
   const freq = requireSheet(wb, "Frequency");
-  const meta = lookupMeta(freq, code);
+  const meta = resolveJackpot(wb, spec, lookupMeta(freq, code));
   assertPool(meta);
   const source = frequencyWinningRows(freq);
   const stats = independentStats(source.rows, meta);
@@ -1263,6 +1535,7 @@ export async function inspectPack(buffer, filename = "upload.xlsx", lottery = "N
     existingDelivery: sheet(wb, PACK_SHEET) ? [PACK_SHEET] : [],
     jpCount: meta.hasJp ? 1 : 0,
     jpNames: meta.hasJp ? ["Progressive Jackpots"] : [],
+    sideHits: meta.hits.map((h) => h.label),
   };
 }
 
@@ -1273,24 +1546,31 @@ export async function buildPack(buffer, filename, options = {}) {
   if (!spec) throw new Error(`Unsupported pack lottery: ${options.lottery}`);
   const wb = await loadWorkbook(buffer);
   const freq = requireSheet(wb, "Frequency");
-  const meta = lookupMeta(freq, code);
+  const meta = resolveJackpot(wb, spec, lookupMeta(freq, code));
   assertPool(meta);
   const source = frequencyWinningRows(freq);
-  const dateSerial = packDateSerial(filename);
   const ws = insertSheet(wb, PACK_SHEET);
-  const built =
-    spec.layout === "NC"
-      ? buildNcDelivery(ws, freq, meta, source, dateSerial)
-      : buildGaDelivery(ws, freq, meta, source, dateSerial);
+  let built;
+  if (spec.layout === "NC") built = buildNcDelivery(ws, freq, meta, source);
+  else if (spec.layout === "VA") built = buildVaDelivery(ws, freq, meta, source);
+  else built = buildGaDelivery(ws, freq, meta, source, packDateSerial(filename));
   if (meta.hasJp) {
     const pj = requireSheet(wb, "Progressive Jackpots");
-    const jpStart = built.tot + 2;
     if (spec.layout === "NC") {
+      const jpStart = built.tot + 2;
       const summaryRows = ncSummaryRows(meta.buy, true);
-      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows));
+      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, summaryRows), NC_WIDTHS);
       linkJackpotSummary(ws, spec.layout, meta, jpStart);
       built.jpStart = jpStart;
+    } else if (spec.layout === "VA") {
+      const jpStart = built.tot + 3;
+      const sum = built.sum;
+      copyJackpotSetting(ws, pj, jpStart, jackpotFreqMap(spec.layout, meta, sum), built.widths);
+      const linked = meta.jpRtpFormula ? rewritePjRefs(meta.jpRtpFormula, jpStart - 2) : "";
+      setValue(ws, `C${sum.jp}`, `=${linked || `C${jpStart + 28}+C${jpStart + 29}`}`);
+      built.jpStart = jpStart;
     } else {
+      const jpStart = built.tot + 2;
       const placed = buildGaJackpotSetting(ws, pj, jpStart);
       setValue(ws, "B10", `=D${placed.seedRtp}`);
       setValue(ws, "B11", `=D${placed.contribRtp}`);
@@ -1304,7 +1584,7 @@ export async function buildPack(buffer, filename, options = {}) {
     }
   }
   applyTabColor(ws);
-  orderPackSheets(wb);
+  orderPackSheets(wb, spec.layout);
   disableFullCalcOnLoad(wb);
   const stats = independentStats(source.rows, meta);
   const rawBuffer = await wb.xlsx.writeBuffer();

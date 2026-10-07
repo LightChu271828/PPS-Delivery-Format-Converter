@@ -1,11 +1,10 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261007-2";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261007-3";
 import {
   buildPack,
   inspectPack,
   isPackLottery,
   packOutputFilename,
-} from "./pack-builder.js?v=20261007-2";
-import { buildVa, inspectVaGame, vaOutputFilename } from "./va-builder.js?v=20261007-2";
+} from "./pack-builder.js?v=20261007-3";
 
 const $ = (id) => document.getElementById(id);
 
@@ -45,10 +44,6 @@ function packMode() {
   return isPackLottery(state.lottery);
 }
 
-function vaMode() {
-  return state.lottery === "VA";
-}
-
 function show(el, on) {
   el.classList.toggle("hidden", !on);
   el.hidden = !on;
@@ -60,15 +55,13 @@ function syncLotteryUi() {
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   });
-  $("priceGrid").classList.toggle("hidden", packMode() || vaMode());
-  $("priceGrid").hidden = packMode() || vaMode();
-  $("buildBtn").textContent = vaMode() ? "Build VA delivery" : packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
+  $("priceGrid").classList.toggle("hidden", packMode());
+  $("priceGrid").hidden = packMode();
+  $("buildBtn").textContent = packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
   const kyTabs = $("kyResultTabs");
   const packTabs = $("packResultTabs");
-  const vaTabs = $("vaResultTabs");
-  if (kyTabs) show(kyTabs, !packMode() && !vaMode());
+  if (kyTabs) show(kyTabs, !packMode());
   if (packTabs) show(packTabs, packMode());
-  if (vaTabs) show(vaTabs, vaMode());
 }
 
 async function fetchTemplate(name) {
@@ -80,12 +73,8 @@ async function fetchTemplate(name) {
 async function loadTemplates() {
   const pill = $("templateStatus");
   try {
-    const [mmj3, nojp, va] = await Promise.all([
-      fetchTemplate("mmj3.xlsx"),
-      fetchTemplate("no-jp.xlsx"),
-      fetchTemplate("va-delivery.xlsx"),
-    ]);
-    state.templates = { mmj3, "no-jp": nojp, va };
+    const [mmj3, nojp] = await Promise.all([fetchTemplate("mmj3.xlsx"), fetchTemplate("no-jp.xlsx")]);
+    state.templates = { mmj3, "no-jp": nojp };
     pill.textContent = "Templates ready";
     pill.className = "pill ok";
   } catch (err) {
@@ -97,7 +86,6 @@ async function loadTemplates() {
 
 function canBuild() {
   if (!state.file || !state.inspect) return false;
-  if (vaMode()) return Boolean(state.templates?.va);
   return packMode() || Boolean(state.templates);
 }
 
@@ -122,18 +110,14 @@ async function inspectSelected() {
   if (!state.file) return;
   try {
     state.buffer = await state.file.arrayBuffer();
-    state.inspect = vaMode()
-      ? await inspectVaGame(state.buffer, state.file.name)
-      : packMode()
-        ? await inspectPack(state.buffer, state.file.name, state.lottery)
-        : await inspectPps(state.buffer, state.file.name);
+    state.inspect = packMode()
+      ? await inspectPack(state.buffer, state.file.name, state.lottery)
+      : await inspectPps(state.buffer, state.file.name);
     renderInspect(state.inspect);
     $("buildBtn").disabled = !canBuild();
-    $("statusHint").textContent = vaMode()
-      ? "Looks readable. Build the VA delivery, then download."
-      : packMode()
-        ? `Looks readable. Add the ${state.lottery} Delivery sheet, then download.`
-        : "Looks readable. Add Delivery tabs, then download.";
+    $("statusHint").textContent = packMode()
+      ? `Looks readable. Add the ${state.lottery} Delivery sheet, then download.`
+      : "Looks readable. Add Delivery tabs, then download.";
   } catch (err) {
     $("inspectBlock").classList.remove("hidden");
     $("inspectBlock").hidden = false;
@@ -148,25 +132,6 @@ async function inspectSelected() {
 function renderInspect(info) {
   $("inspectBlock").classList.remove("hidden");
   $("inspectBlock").hidden = false;
-  if (vaMode()) {
-    $("inspectStats").innerHTML = [
-      stat(info.sheet || (info.role === "side" ? "Side Bet" : "Main Game"), "Sheet"),
-      stat(info.tiers, "Winning tiers"),
-      stat(pct(info.rtp), "RTP setting"),
-      stat(fmt(info.hitRate, 2), "Hit rate"),
-      stat(info.hits.length, "Side-bet hit rates"),
-      stat(info.jackpot.length ? "Yes" : "No", "Jackpot"),
-    ].join("");
-    const bits = [];
-    bits.push(`<b>${info.title}</b>. Pool <b>${fmt(info.pool, 0)}</b>, base <b>$${info.base}</b>.`);
-    bits.push("Winning tiers keep Frequency order, including 0 Odds up.");
-    if (info.hits.length) bits.push(`This file lists <b>${info.hits.length}</b> side-bet hit rate(s).`);
-    if (info.zeroFrequency) bits.push(`Keeping ${info.zeroFrequency} tier row(s) with 0 Odds up.`);
-    if (!info.jackpot.length) bits.push("No Progressive Jackpots block.");
-    $("inspectNote").className = "note";
-    $("inspectNote").innerHTML = bits.join(" ");
-    return;
-  }
   if (packMode()) {
     $("inspectStats").innerHTML = [
       stat(info.layout || "—", "Layout"),
@@ -182,6 +147,9 @@ function renderInspect(info) {
     if (info.buy) bits.push(`RRP <b>${info.rrp}x</b>.`);
     if (info.layout === "GA") bits.push("Winning tiers sort by prize, smallest first.");
     else bits.push("Winning tiers keep Frequency order.");
+    if (info.layout === "VA" && info.sideHits?.length) {
+      bits.push(`Side-bet hit rates: <b>${info.sideHits.length}</b>.`);
+    }
     if (info.existingDelivery?.length) {
       bits.push(`Will replace existing ${info.existingDelivery.map((n) => `<code>${n}</code>`).join(", ")}.`);
     }
@@ -224,16 +192,6 @@ function renderResult(report) {
   $("resultBlock").classList.remove("hidden");
   $("resultBlock").hidden = false;
   syncLotteryUi();
-  if (vaMode()) {
-    $("resultStats").innerHTML = [
-      stat(report.sheet, "Written as"),
-      stat(report.tiers, "Winning tiers"),
-      stat(pct(report.actualRtp), "Base RTP"),
-      stat(fmt(report.hitRate, 2), "Hit rate"),
-      stat(report.hits.length, "Side-bet hit rates"),
-    ].join("");
-    return;
-  }
   if (packMode()) {
     $("resultStats").innerHTML = [
       stat(report.layout, "Written as"),
@@ -256,32 +214,6 @@ function renderResult(report) {
 }
 
 async function build() {
-  if (vaMode()) {
-    if (!state.buffer || !state.templates?.va) return;
-    $("buildBtn").disabled = true;
-    $("statusHint").textContent = "Building VA delivery…";
-    try {
-      const { buffer, report } = await buildVa(state.buffer, state.file.name, {
-        template: state.templates.va,
-      });
-      state.output = buffer;
-      state.outputName = vaOutputFilename(state.file.name);
-      renderResult(report);
-      $("downloadBtn").disabled = false;
-      $("downloadBtn").classList.add("ready");
-      $("statusHint").textContent = `Ready: ${state.outputName}`;
-      toast("VA delivery ready");
-    } catch (err) {
-      $("resultBlock").classList.remove("hidden");
-      $("resultBlock").hidden = false;
-      $("resultStats").innerHTML = stat("Failed", "Build", "bad");
-      $("statusHint").textContent = err.message;
-      toast(err.message);
-    } finally {
-      $("buildBtn").disabled = !canBuild();
-    }
-    return;
-  }
   if (!state.buffer) return;
   if (!packMode() && !state.templates) return;
   $("buildBtn").disabled = true;
@@ -401,7 +333,7 @@ $("buildBtn").addEventListener("click", build);
 $("downloadBtn").addEventListener("click", download);
 $("resetBtn").addEventListener("click", reset);
 $("priceGridOptions").addEventListener("change", () => {
-  if (state.inspect && !packMode() && !vaMode()) renderInspect(state.inspect);
+  if (state.inspect && !packMode()) renderInspect(state.inspect);
 });
 document.querySelector(".markets").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-lottery]");
@@ -416,7 +348,7 @@ loadTemplates()
   })
   .catch((err) => {
     $("statusHint").textContent = err.message;
-    if (state.inspect && (packMode() || vaMode())) {
+    if (state.inspect && packMode()) {
       $("buildBtn").disabled = false;
     }
   });
