@@ -6,8 +6,8 @@ server.
 
 **Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
-Pick the lottery first. Kentucky is a four-tab pack. Virginia is a two-file Main Game and Side Bet
-workbook. NC, GA, PA, and NH write one Delivery sheet.
+Pick the lottery first. Kentucky is a four-tab pack. Virginia writes one sheet from one PPS.
+NC, GA, PA, and NH write one Delivery sheet.
 
 ## Kentucky
 
@@ -51,10 +51,11 @@ Number formats are plain `#,##0`, `#,##0.00`, and `0.00%`. Accounting padding is
 
 ## Virginia
 
-Upload the Main Game PPS and the Side Bet PPS. The download is a new workbook with only those
-two sheets. Frequency order is kept, including tiers whose Odds up is 0. The jackpot block is
-copied from Progressive Jackpots, without the json setup form. Main Game also lists the side-bet
-hit rates from Frequency. The download name replaces `(MainGame)` with `(Delivery)`.
+Upload one PPS. The download is a new workbook with one sheet: `Main Game`, or `Side Bet` when
+the file is a side bet. Games that have no side bet omit that block. When Frequency already lists
+side-bet hit rates, those rows are written on the same sheet. Frequency order is kept, including
+tiers whose Odds up is 0. The jackpot block is copied from Progressive Jackpots, without the json
+setup form. `(MainGame)` in the filename becomes `(Delivery)`. A side-bet file keeps `SideBet` in the download name.
 
 Buy-feature packs are still one workbook per game for now.
 

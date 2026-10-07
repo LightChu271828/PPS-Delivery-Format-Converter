@@ -1,8 +1,9 @@
 /**
  * Virginia Lottery delivery workbook.
- * Two uploaded PPS files become one workbook with Main Game and Side Bet sheets.
- * Layout follows Cash Vault Boost 2: Frequency in columns B–I from row 19, then the
- * Progressive Jackpots block. Styles come from assets/templates/va-delivery.xlsx.
+ * One uploaded PPS becomes one sheet: Main Game, or Side Bet when that file is a side bet.
+ * Games without side-bet hit rates omit that block. Layout follows Cash Vault Boost 2:
+ * Frequency in columns B–I from row 19, then the Progressive Jackpots block.
+ * Styles come from assets/templates/va-delivery.xlsx.
  * Number formats stay plain: no accounting _ or * padding.
  */
 
@@ -177,6 +178,19 @@ function readHits(freq) {
   return hits;
 }
 
+function readSideHit(freq) {
+  for (let row = 1; row <= 40; row += 1) {
+    const label = labelAt(freq, row);
+    if (!/^side\s*bet\s*hit\s*rate/i.test(label)) continue;
+    const value = cellResult(freq.getCell(row, 14));
+    if (!Number.isFinite(Number(value))) {
+      throw new Error(`${label} needs a cached value in Frequency N${row}. Open it in Excel, calculate, and save.`);
+    }
+    return { label, value: Number(value) };
+  }
+  return null;
+}
+
 function readJackpot(pj) {
   if (!pj) return [];
   const cells = [];
@@ -231,6 +245,7 @@ function readGame(wb, filename) {
     rtp: Number(rtp),
     rows,
     hits: readHits(freq),
+    sideHit: readSideHit(freq),
     jackpot: readJackpot(wb.getWorksheet("Progressive Jackpots")),
     tiers: winning.length,
     wins,
@@ -346,15 +361,26 @@ function writeTable(ws, templateWs, spec, rows, lastWin, total) {
   }
 }
 
-function writeHits(ws, templateWs, hits) {
+function writeHits(ws, templateWs, hits, sideHit) {
+  if (sideHit) {
+    const label = ws.getCell(7, 5);
+    paint(templateWs.getCell(9, 5), label);
+    label.value = sideHit.label;
+    const value = ws.getCell(7, 6);
+    paint(templateWs.getCell(9, 6), value, FMT_MONEY);
+    value.value = sideHit.value;
+  }
   hits.forEach((hit, index) => {
     const row = 9 + index;
     const label = ws.getCell(row, 5);
     paint(templateWs.getCell(9, 5), label);
     label.value = hit.label;
     let body = hit.formula.replace(/^=/, "");
-    body = body.replaceAll("$N$16", "$C$15").replaceAll("$N$15", "'Side Bet'!$C$15");
-    body = body.replaceAll("N$16", "$C$15").replaceAll("N$15", "'Side Bet'!$C$15");
+    if (/\$?N\$15/.test(body) && !sideHit) {
+      throw new Error(`${hit.label} refers to a side-bet hit rate, and this PPS has no cached Side bet Hit Rate.`);
+    }
+    body = body.replaceAll("$N$16", "$C$15").replaceAll("$N$15", "$F$7");
+    body = body.replaceAll("N$16", "$C$15").replaceAll("N$15", "$F$7");
     const value = ws.getCell(row, 6);
     paint(templateWs.getCell(9, 6), value, FMT_MONEY);
     value.value = { formula: body };
@@ -387,7 +413,7 @@ function writeJackpot(ws, templateWs, spec, jackpot, jpStart) {
   }
 }
 
-function buildSheet(wb, templateWb, sheetName, game, withHits) {
+function buildSheet(wb, templateWb, sheetName, game) {
   const templateWs = templateWb.getWorksheet(sheetName);
   if (!templateWs) throw new Error(`VA template is missing ${sheetName}.`);
   const spec = TEMPLATE_ROWS[sheetName];
@@ -401,33 +427,28 @@ function buildSheet(wb, templateWb, sheetName, game, withHits) {
   const jpStart = game.jackpot.length ? total + 3 : null;
   writeMeta(ws, templateWs, game, lastWin, total, jpStart || 0);
   writeTable(ws, templateWs, spec, game.rows, lastWin, total);
-  if (withHits) writeHits(ws, templateWs, game.hits);
+  if (game.hits.length) writeHits(ws, templateWs, game.hits, game.sideHit);
   if (jpStart) writeJackpot(ws, templateWs, spec, game.jackpot, jpStart);
   return { lastWin, total, jpStart, tiers: game.tiers };
 }
 
-export async function buildVa(mainBuffer, sideBuffer, mainName, sideName, options = {}) {
+export async function buildVa(sourceBuffer, filename = "upload.xlsx", options = {}) {
   if (!options.template) throw new Error("VA template is not loaded.");
   const templateWb = await loadWorkbook(options.template);
-  const mainWb = await loadWorkbook(mainBuffer);
-  const sideWb = await loadWorkbook(sideBuffer);
-  const main = readGame(mainWb, mainName || "Main Game.xlsx");
-  const side = readGame(sideWb, sideName || "Side Bet.xlsx");
+  const source = await loadWorkbook(sourceBuffer);
+  const game = readGame(source, filename);
+  const sheetName = game.role === "side" ? "Side Bet" : "Main Game";
   const out = new ExcelJS.Workbook();
   out.calcProperties = { ...(out.calcProperties || {}), calcMode: "auto", fullCalcOnLoad: false };
-  const mainPlace = buildSheet(out, templateWb, "Main Game", main, true);
-  const sidePlace = buildSheet(out, templateWb, "Side Bet", side, false);
-  writeConfidential(out.getWorksheet("Main Game"), templateWb.getWorksheet("Main Game"), "H9:K13", "H9");
-  writeConfidential(out.getWorksheet("Side Bet"), templateWb.getWorksheet("Side Bet"), "E8:H12", "E8");
+  const place = buildSheet(out, templateWb, sheetName, game);
+  const ws = out.getWorksheet(sheetName);
+  if (game.hits.length) writeConfidential(ws, templateWb.getWorksheet(sheetName), "H9:K13", "H9");
+  else writeConfidential(ws, templateWb.getWorksheet("Side Bet"), "E8:H12", "E8");
   const raw = await out.xlsx.writeBuffer();
   const { patchPackXlsx } = await import("./pack-builder.js");
   const buffer = await patchPackXlsx(raw);
   return {
     buffer,
-    report: {
-      lottery: "VA",
-      main: { ...main, ...mainPlace },
-      side: { ...side, ...sidePlace },
-    },
+    report: { lottery: "VA", sheet: sheetName, ...game, ...place },
   };
 }

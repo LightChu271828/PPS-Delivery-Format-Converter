@@ -131,9 +131,6 @@
     }
     .panel-b { padding: 14px; }
 
-    .va-files { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .va-files .drop { padding: 18px 12px; }
-    @media (max-width: 640px) { .va-files { grid-template-columns: 1fr; } }
     .drop {
       border: 1px dashed var(--line);
       border-radius: 8px;
@@ -213,9 +210,9 @@
       <div>
         <h1>PPS Delivery Format Converter</h1>
         <p>
-          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. Virginia writes a
-          Main Game sheet and a Side Bet sheet from two PPS files. NC keeps Frequency order on one
-          Delivery sheet. GA, PA, and NH sort winning tiers by prize. Everything runs in this page.
+          Upload a PPS and pick the lottery. Kentucky writes four delivery tabs. Virginia writes one
+          delivery sheet from that file. NC keeps Frequency order on one Delivery sheet. GA, PA, and
+          NH sort winning tiers by prize. Everything runs in this page.
         </p>
       </div>
       <div class="btnrow">
@@ -263,21 +260,6 @@
         </div>
         <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
 
-        <div class="va-files hidden" id="vaFiles" hidden>
-          <div class="drop" id="vaMainDrop" tabindex="0">
-            <strong>Main Game PPS</strong>
-            <span class="hint">Drop the MainGame file, or click to browse.</span>
-            <div class="file" id="vaMainLabel"></div>
-          </div>
-          <div class="drop" id="vaSideDrop" tabindex="0">
-            <strong>Side Bet PPS</strong>
-            <span class="hint">Drop the SideBet file, or click to browse.</span>
-            <div class="file" id="vaSideLabel"></div>
-          </div>
-        </div>
-        <input id="vaMainFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
-        <input id="vaSideFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
-
         <div class="rebuild">
           <button type="button" class="primary" id="buildBtn" disabled>Add Delivery tabs</button>
           <button type="button" id="downloadBtn" disabled>Download PPS</button>
@@ -314,8 +296,7 @@
               <tr><th>Tab</th><th>Role</th></tr>
             </thead>
             <tbody>
-              <tr><td>Main Game</td><td>Frequency order, including 0 Odds up. Side-bet hit rates sit beside the prize structure. Jackpot block follows the total row.</td></tr>
-              <tr><td>Side Bet</td><td>Same tier table and jackpot block. No side-bet hit-rate column.</td></tr>
+              <tr><td>Main Game or Side Bet</td><td>One sheet from the uploaded PPS. Frequency order, including 0 Odds up. Side-bet hit rates appear only when this file already lists them. Jackpot block follows the total row.</td></tr>
             </tbody>
           </table>
           <table id="packResultTabs" class="hidden" hidden>
@@ -336,15 +317,14 @@
 
     <h2>What this does not do</h2>
     <p class="note">
-      It does not retune Frequency, RTP, or jackpot math. Virginia needs the Main Game PPS and the
-      Side Bet PPS; the download is a new workbook with those two delivery sheets. Combined
-      multi-price Delivery packs are not inputs — upload the per-price PPS. Buy-feature packs are
-      still one workbook per game. If ExcelJS cannot open a file, open it in Excel and Save As
-      .xlsx first.
+      It does not retune Frequency, RTP, or jackpot math. Virginia takes one PPS and downloads a
+      new workbook with one delivery sheet. Combined multi-price Delivery packs are not inputs —
+      upload the per-price PPS. Buy-feature packs are still one workbook per game. If ExcelJS
+      cannot open a file, open it in Excel and Save As .xlsx first.
     </p>
   </div>
   <div class="toast" id="toast"></div>
   <script src="./vendor/exceljs.min.js"></script>
-  <script type="module" src="app.js?v=20261007-1"></script>
+  <script type="module" src="app.js?v=20261007-2"></script>
 </body>
 </html>

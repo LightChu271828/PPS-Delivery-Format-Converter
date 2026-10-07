@@ -29,6 +29,11 @@ assert(
     "261006_VA_YearOfFireGoatSupremeJP(Delivery)_PPS_084_003.xlsx",
   "VA output name",
 );
+assert(
+  vaOutputFilename("261006_VA_YearOfFireGoatSupremeJP(SideBet)_PPS_084_003.xlsx") ===
+    "261006_VA_YearOfFireGoatSupremeJP(SideBet)(Delivery)_PPS_084_003.xlsx",
+  "VA side output name",
+);
 
 const onedrive = path.join(process.env.USERPROFILE, "OneDrive - Instant Win Gaming Ltd", "PPS Excels", "VA");
 const goat = path.join(onedrive, "261006 Year of Fire Goat(SupremeJP)");
@@ -45,17 +50,24 @@ assert(sideInfo.tiers === 55, `side tiers ${sideInfo.tiers}`);
 assert(mainInfo.hits.length === 5, `hits ${mainInfo.hits.length}`);
 assert(mainInfo.zeroFrequency === 4, `zeros ${mainInfo.zeroFrequency}`);
 assert(mainInfo.prizeFund > 0 && Math.abs(mainInfo.actualRtp - mainInfo.prizeFund / mainInfo.pool) < 1e-9, "main fund");
-assert(Math.abs(sideInfo.hitRate - 12.646301905165382) < 1e-6, `side hit ${sideInfo.hitRate}`);
+assert(mainInfo.sideHit && mainInfo.sideHit.value > 1, `side hit cache ${mainInfo.sideHit?.value}`);
+assert(sideInfo.hitRate > 1 && sideInfo.hits.length === 0, `side hit ${sideInfo.hitRate}`);
 
-const built = await buildVa(mainBuf, sideBuf, mainName, sideName, { template });
-assert(built.report.main.jpStart === 226, `jp ${built.report.main.jpStart}`);
-assert(built.report.side.jpStart === 78, `side jp ${built.report.side.jpStart}`);
+const built = await buildVa(mainBuf, mainName, { template });
+assert(built.report.sheet === "Main Game", built.report.sheet);
+assert(built.report.jpStart === 226, `jp ${built.report.jpStart}`);
+const sideBuilt = await buildVa(sideBuf, sideName, { template });
+assert(sideBuilt.report.sheet === "Side Bet", sideBuilt.report.sheet);
+assert(sideBuilt.report.jpStart === 78, `side jp ${sideBuilt.report.jpStart}`);
+assert(sideBuilt.report.hits.length === 0, "side file has no extra hit rates");
 
 const wb = new ExcelJS.Workbook();
 await wb.xlsx.load(built.buffer);
-assert(wb.worksheets.map((ws) => ws.name).join(",") === "Main Game,Side Bet", "sheet names");
+assert(wb.worksheets.map((ws) => ws.name).join(",") === "Main Game", "sheet names");
 const mg = wb.getWorksheet("Main Game");
-const sb = wb.getWorksheet("Side Bet");
+const sideWb = new ExcelJS.Workbook();
+await sideWb.xlsx.load(sideBuilt.buffer);
+const sb = sideWb.getWorksheet("Side Bet");
 assertPlainNumberFormats(mg, "VA main");
 assertPlainNumberFormats(sb, "VA side");
 assert(mg.getCell("B18").value === "NUMBER", mg.getCell("B18").value);
@@ -67,7 +79,12 @@ assert(formulaOf(mg.getCell("C12")) === "=C254+C255", formulaOf(mg.getCell("C12"
 assert(formulaOf(mg.getCell("E19")) === "=F19-SUM(E20:E222)", formulaOf(mg.getCell("E19")));
 assert(mg.getCell("C222").value === "bonusB-10|||||||||", mg.getCell("C222").value);
 assert(mg.getCell("E222").value === 0, "zero odds row kept");
-assert(String(formulaOf(mg.getCell("F9"))).includes("'Side Bet'!$C$15"), formulaOf(mg.getCell("F9")));
+assert(mg.getCell("E7").value === "Side bet Hit Rate", mg.getCell("E7").value);
+assert(mg.getCell("F7").value === mainInfo.sideHit.value, mg.getCell("F7").value);
+assert(String(formulaOf(mg.getCell("F9"))).includes("$F$7"), formulaOf(mg.getCell("F9")));
+assert(String(formulaOf(mg.getCell("F9"))).includes("$C$15"), formulaOf(mg.getCell("F9")));
+assert(!String(formulaOf(mg.getCell("F9"))).includes("'Side Bet'"), formulaOf(mg.getCell("F9")));
+assert(String(mg.getCell("H9").value || "").includes("confidential"), "main confidential");
 assert(mg.getCell("E13").value === "Hit Rate(+5 Side bets):", mg.getCell("E13").value);
 assert(mg.getCell("C226").value === 20000000, mg.getCell("C226").value);
 assert(mg.getCell("M235").value === 50, mg.getCell("M235").value);
@@ -87,4 +104,4 @@ assert(String(sb.getCell("E8").value || "").includes("confidential"), "side conf
 const book = await readZipText(built.buffer, "xl/workbook.xml");
 assert(book.includes('calcMode="auto"'), book.match(/<calcPr\b[^>]*>/)?.[0]);
 assert(!book.includes('fullCalcOnLoad="1"') && !book.includes('fullCalcOnLoad="true"'), "full calc");
-console.log("va ok", built.report.main.tiers, built.report.side.tiers);
+console.log("va ok", built.report.tiers, sideBuilt.report.tiers);
