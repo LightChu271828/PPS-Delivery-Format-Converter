@@ -18,7 +18,7 @@ export const PACK_LOTTERIES = {
   DC: { code: "DC", layout: "DC", name: "DC Lottery" },
 };
 
-export const DC_PRICE_OPTIONS = [0.1, 0.2, 0.5, 1, 2, 3, 5, 10, 20, 30, 50];
+export const DC_PRICE_OPTIONS = [0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 10, 20, 30, 50];
 export const DC_DEFAULT_PRICE_POINTS = [0.5, 1, 2, 3, 5, 10, 20, 30, 50];
 
 export const PACK_SHEET = "Delivery";
