@@ -56,12 +56,14 @@
     .topbar { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
     .topbar > div:first-child { flex: 1 1 420px; min-width: 0; }
     .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
-    button {
+    button, .home {
       font: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 5px;
       border: 1px solid var(--line); background: var(--bg-soft); color: var(--text);
       cursor: pointer;
     }
-    button:hover { border-color: var(--text-faint); }
+    button:hover, .home:hover { border-color: var(--text-faint); }
+    .home { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+    .home svg { width: 13px; height: 13px; }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     button.primary:hover { filter: brightness(1.08); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -218,6 +220,7 @@
         </p>
       </div>
       <div class="btnrow">
+        <a class="home" href="/"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.5 8 3l5.5 4.5M4 6.5V13h3v-3h2v3h3V6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Home</a>
         <button type="button" id="resetBtn">Reset</button>
       </div>
     </div>
