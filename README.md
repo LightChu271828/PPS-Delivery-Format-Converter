@@ -42,9 +42,9 @@ skipped.
 
 | Lottery | Layout |
 | --- | --- |
-| NC | Frequency order from row 4. Summary in K/L beside the tiers. Bonus / Freeplay show `-` when that category is missing. |
-| VA | The NC table with the summary in B/C above it; the tier header sits three rows below Hit Rate. Delivery is placed right after Frequency. Side-bet hit rates go in E/F only when Frequency lists them. |
-| DC | The NC table and K/L summary, without Game info. The confidentiality notice sits three rows below Hit Rate, then a boxed game sheet: Total Tickets, Retail Price, Revenue, Prize Fund, Payout, Odds, Top Prize, Max Top Prize $ Value (top multiple × highest price point), Price Points, and value distribution by prize multiple. Delivery is placed right after Frequency. |
+| NC | Prize structure table in A:J: Tier Number, Prize, Win Method, Odds, Probability, Expected Return, Prize Cost, 1 in X Odds, Number in Pool, % of Prize Fund. Title in C1, headers on rows 3–4, non-win on row 5, winners from row 6 in Frequency order, then the total row. Summary in L/M from row 5; JP RTP and Total RTP sit under Base RTP on jackpot games, and RRP(x) under Base on buy-feature games. Game info three rows below Hit Rate, with green Bonus and yellow Free Game labels; Bonus / Freeplay show `-` when that category is missing. On jackpot games a note sits two rows below the total and the jackpot block two rows below the note. |
+| VA | The B:I tier table (Frequency order from row 4) with the summary in B/C above it; the tier header sits three rows below Hit Rate. Delivery is placed right after Frequency. Side-bet hit rates go in E/F only when Frequency lists them. |
+| DC | The B:I tier table with the summary in K/L beside it, without Game info. The confidentiality notice sits three rows below Hit Rate, then a boxed game sheet: Total Tickets, Retail Price, Revenue, Prize Fund, Payout, Odds, Top Prize, Max Top Prize $ Value (top multiple × highest price point), Price Points, and value distribution by prize multiple. Delivery is placed right after Frequency. |
 | GA, PA, NH | Winning tiers sorted by prize, smallest first. Consolidated 1-in-X and `% of Prize Fund`. Bonus and Freeplay lines are always present. |
 
 JP RTP and Total RTP rows appear only for jackpot games. The Progressive Jackpots block is copied

@@ -75,28 +75,67 @@ const piggyWb = await loadBuilt(piggyBuilt.buffer);
 const piggyD = piggyWb.getWorksheet("Delivery");
 assert(piggyD, "missing NC Delivery");
 assertPlainNumberFormats(piggyD, "PiggyBreaker");
-assert(formulaOf(piggyD.getCell("E4")) === `=F4-SUM(E5:E${4 + piggyInfo.winningTiers})`, `Piggy E4 ${formulaOf(piggyD.getCell("E4"))}`);
-assert(piggyD.getCell("F4").value === 2000000, `Piggy F4 ${piggyD.getCell("F4").value}`);
-assert(String(formulaOf(piggyD.getCell("I4"))).includes("L$9"), `Piggy I4 ${formulaOf(piggyD.getCell("I4"))}`);
-assert(piggyD.getCell("K16").value === "Game info for NC", `Piggy game info ${piggyD.getCell("K16").value}`);
-assert(String(piggyD.getCell("K29").value || "").includes("strictly confidential"), "Piggy confidential at K29");
-assert(String(formulaOf(piggyD.getCell("L8"))) === "=L6*L7", `Piggy revenue ${formulaOf(piggyD.getCell("L8"))}`);
-assert(String(formulaOf(piggyD.getCell("M11"))).includes("okay"), `Piggy flag ${formulaOf(piggyD.getCell("M11"))}`);
+const piggyLast = 5 + piggyInfo.winningTiers;
+const piggyTot = piggyLast + 1;
+assert(piggyBuilt.report.delivery.tot === piggyTot, `Piggy total row ${piggyBuilt.report.delivery.tot}`);
 assert(piggyD.getCell("A1").value == null, `Piggy A1 ${piggyD.getCell("A1").value}`);
-const piggyLast = 4 + piggyInfo.winningTiers;
-for (const col of ["B", "C", "D", "E", "F", "G", "H", "I"]) {
-  assert(piggyD.getCell(`${col}3`).border?.bottom?.style === "medium", `Piggy ${col}3 underline`);
-  assert(piggyD.getCell(`${col}${piggyLast}`).border?.bottom?.style === "medium", `Piggy ${col}${piggyLast} underline`);
+assert(
+  piggyD.getCell("C1").value === "Piggy Breaker Prize Structure for North Carolina Education Lottery",
+  `Piggy title ${piggyD.getCell("C1").value}`,
+);
+const ncHeads = {
+  A3: "TIER", A4: "Number", B4: "Prize", C4: "Win Method", D4: "Odds", E4: "Probability",
+  F3: "Expected", F4: "Return", G3: "Prize", G4: "Cost", H4: "1 in X Odds",
+  I3: "Number in", I4: "Pool", J3: "% of", J4: "Prize Fund",
+};
+for (const [addr, text] of Object.entries(ncHeads)) {
+  assert(piggyD.getCell(addr).value === text, `Piggy ${addr} ${piggyD.getCell(addr).value}`);
 }
-assert(piggyD.getCell("B2").font?.name === "Geneva", `Piggy B2 font ${JSON.stringify(piggyD.getCell("B2").font)}`);
-assert(piggyD.getCell("K2").font?.name === "Arial Black", `Piggy K2 font ${JSON.stringify(piggyD.getCell("K2").font)}`);
-for (const [addr, theme] of [["K17", 9], ["K18", 9], ["K19", 7], ["K20", 7]]) {
+for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]) {
+  assert(piggyD.getCell(`${col}4`).border?.bottom?.style === "thin", `Piggy ${col}4 underline`);
+  assert(piggyD.getCell(`${col}${piggyLast}`).border?.bottom?.style === "thin", `Piggy ${col}${piggyLast} underline`);
+}
+assert(piggyD.getCell("K4").value == null && piggyD.getCell("K2").value == null, "Piggy has old K column content");
+assert(piggyD.getCell("A5").value === 0 && piggyD.getCell("A5").numFmt === "00", "Piggy non-win tier on row 5");
+assert(formulaOf(piggyD.getCell("D5")) === `=I5-SUM(D6:D${piggyLast})`, `Piggy D5 ${formulaOf(piggyD.getCell("D5"))}`);
+assert(piggyD.getCell("I5").value === 2000000, `Piggy I5 ${piggyD.getCell("I5").value}`);
+assert(formulaOf(piggyD.getCell("J5")) === "=IFERROR(G5/M$8,0)", `Piggy J5 ${formulaOf(piggyD.getCell("J5"))}`);
+assert(formulaOf(piggyD.getCell("E6")) === "=D6/I6", `Piggy E6 ${formulaOf(piggyD.getCell("E6"))}`);
+assert(formulaOf(piggyD.getCell("F6")) === "=E6*B6", `Piggy F6 ${formulaOf(piggyD.getCell("F6"))}`);
+assert(formulaOf(piggyD.getCell("G6")) === "=D6*B6", `Piggy G6 ${formulaOf(piggyD.getCell("G6"))}`);
+assert(formulaOf(piggyD.getCell("H6")) === "=IFERROR(I6/D6,0)", `Piggy H6 ${formulaOf(piggyD.getCell("H6"))}`);
+assert(formulaOf(piggyD.getCell("J6")) === "=G6/M$8", `Piggy J6 ${formulaOf(piggyD.getCell("J6"))}`);
+assert(typeof piggyD.getCell("D6").value === "number", "Piggy D6 winners should be a value");
+for (const col of ["D", "E", "F", "G"]) {
+  assert(formulaOf(piggyD.getCell(`${col}${piggyTot}`)) === `=SUM(${col}5:${col}${piggyLast})`, `Piggy ${col}${piggyTot} total`);
+}
+const piggySummary = {
+  L5: "Odds Down (ticket quantity if pool based):", L6: "Base:", L7: "Revenue:", L8: "Prize Fund:",
+  L9: "RTP Setting:", L10: "Base RTP:", L11: "Winning Tiers Freq:", L12: "Hit Rate:", L15: "Game info for NC",
+};
+for (const [addr, text] of Object.entries(piggySummary)) {
+  assert(piggyD.getCell(addr).value === text, `Piggy ${addr} ${piggyD.getCell(addr).value}`);
+}
+assert(piggyD.getCell("M5").value === 2000000, `Piggy M5 ${piggyD.getCell("M5").value}`);
+assert(formulaOf(piggyD.getCell("M7")) === "=M5*M6", `Piggy revenue ${formulaOf(piggyD.getCell("M7"))}`);
+assert(formulaOf(piggyD.getCell("M8")) === `=SUM(G6:G${piggyLast})`, `Piggy fund ${formulaOf(piggyD.getCell("M8"))}`);
+assert(formulaOf(piggyD.getCell("M10")) === `=G${piggyTot}/M7`, `Piggy base RTP ${formulaOf(piggyD.getCell("M10"))}`);
+assert(formulaOf(piggyD.getCell("M11")) === `=SUM(D6:D${piggyLast})`, `Piggy wins ${formulaOf(piggyD.getCell("M11"))}`);
+assert(formulaOf(piggyD.getCell("M12")) === "=M5/M11", `Piggy hit ${formulaOf(piggyD.getCell("M12"))}`);
+assert(String(formulaOf(piggyD.getCell("M16"))).includes("$M$5/SUMIF($C$6:$C$"), `Piggy bonus odds ${formulaOf(piggyD.getCell("M16"))}`);
+for (const [addr, theme] of [["L16", 9], ["L17", 9], ["L18", 7], ["L19", 7]]) {
   assert(piggyD.getCell(addr).fill?.fgColor?.theme === theme, `Piggy ${addr} fill ${JSON.stringify(piggyD.getCell(addr).fill)}`);
 }
-assert(piggyD.getCell("B5").numFmt === "00", `Piggy B5 fmt ${piggyD.getCell("B5").numFmt}`);
+assert(String(piggyD.getCell("L27").value || "").includes("strictly confidential"), "Piggy confidential at L27");
+assert(piggyD.getCell(`A${piggyTot + 2}`).value == null, "Piggy non-JP should not carry the JP note");
+for (let row = 1; row <= 40; row += 1) {
+  assert(!String(formulaOf(piggyD.getCell(`N${row}`)) || "").includes("okay"), `Piggy N${row} kept the okay flag`);
+}
+const piggyWidths = Array.from({ length: 10 }, (_, i) => piggyD.getColumn(i + 1).width || 0);
+assert(piggyWidths[2] === Math.max(...piggyWidths), `Piggy Win Method is not the widest column ${piggyWidths}`);
 assert(String(piggyD.getCell(`C${piggyLast}`).value || "").length > 0, "Piggy last method lost its value");
-assert(String(piggyD.getCell("C5").value || "").length > 0, "Piggy first method empty");
-assert(!String(piggyD.getCell("C5").value).includes(" x 1"), "Piggy method gained x 1");
+assert(String(piggyD.getCell("C6").value || "").length > 0, "Piggy first method empty");
+assert(!String(piggyD.getCell("C6").value).includes(" x 1"), "Piggy method gained x 1");
 const piggyTab = piggyD.properties?.tabColor;
 assert(piggyTab?.theme === 5, `Piggy tab color ${JSON.stringify(piggyTab)}`);
 await writeFile(path.join(outDir, packOutputFilename(path.basename(piggyPath), "NC")), Buffer.from(piggyBuilt.buffer));
@@ -110,17 +149,25 @@ const vipBuilt = await buildPack(vipBuf, path.basename(vipPath), { lottery: "NC"
 const vipWb = await loadBuilt(vipBuilt.buffer);
 const vipD = vipWb.getWorksheet("Delivery");
 assertPlainNumberFormats(vipD, "VIPElite");
-assert(vipD.getCell("K12").value === "JP RTP", `VIPElite K12 ${vipD.getCell("K12").value}`);
-assert(vipD.getCell("K10").value === "RTP Setting ", `VIPElite K10 ${vipD.getCell("K10").value}`);
-assert(vipD.getCell("K14").value === "Winning Tiers Freq:", `VIPElite K14 ${vipD.getCell("K14").value}`);
+const vipSummary = {
+  L9: "RTP Setting:", L10: "Base RTP:", L11: "JP RTP:", L12: "Total RTP:",
+  L13: "Winning Tiers Freq:", L14: "Hit Rate:", L17: "Game info for NC",
+};
+for (const [addr, text] of Object.entries(vipSummary)) {
+  assert(vipD.getCell(addr).value === text, `VIPElite ${addr} ${vipD.getCell(addr).value}`);
+}
+const vipTot = 5 + vipInfo.winningTiers + 1;
 const vipJp = vipBuilt.report.delivery.jpStart;
+assert(vipJp === vipTot + 4, `VIPElite JP start ${vipJp}`);
+assert(String(vipD.getCell(`A${vipTot + 2}`).value || "").startsWith("Any progressive jackpot information"), "VIPElite JP note");
+assert(vipD.getCell(`A${vipTot + 1}`).value == null && vipD.getCell(`A${vipTot + 3}`).value == null, "VIPElite note spacing");
 assert(vipD.getCell(vipJp, 2).value === "Base JP Odds Down", `VIPElite JP start ${vipD.getCell(vipJp, 2).value}`);
-assert(formulaOf(vipD.getCell("L12")) === `=C${vipJp + 28}+C${vipJp + 29}`, `VIPElite L12 ${formulaOf(vipD.getCell("L12"))}`);
+assert(formulaOf(vipD.getCell("M11")) === `=C${vipJp + 28}+C${vipJp + 29}`, `VIPElite M11 ${formulaOf(vipD.getCell("M11"))}`);
+assert(formulaOf(vipD.getCell("M12")) === "=M11+M10", `VIPElite M12 ${formulaOf(vipD.getCell("M12"))}`);
+assert(formulaOf(vipD.getCell("M14")) === "=M5/M13", `VIPElite M14 ${formulaOf(vipD.getCell("M14"))}`);
 assert(!String(vipD.getCell(vipJp, 5).value || "").toLowerCase().includes("json"), "VIPElite copied json setup");
-assert(String(formulaOf(vipD.getCell(vipJp + 24, 3)) || "").includes("$L$15"), `VIPElite hit link ${formulaOf(vipD.getCell(vipJp + 24, 3))}`);
-assert(vipD.getCell("K13").value === "Total RTP:", `VIPElite K13 ${vipD.getCell("K13").value}`);
-assert(vipD.getCell("K18").value === "Game info for NC", `VIPElite game info ${vipD.getCell("K18").value}`);
-assert(vipJp === 4 + vipInfo.winningTiers + 3, `VIPElite JP start ${vipJp}`);
+assert(String(formulaOf(vipD.getCell(vipJp + 24, 3)) || "").includes("$M$14"), `VIPElite hit link ${formulaOf(vipD.getCell(vipJp + 24, 3))}`);
+assert(String(vipD.getCell("L29").value || "").includes("strictly confidential"), "VIPElite confidential at L29");
 const vipSrc = await loadBuilt(vipBuf);
 const vipPj = vipSrc.getWorksheet("Progressive Jackpots");
 let vipStyled = 0;
@@ -138,8 +185,33 @@ for (let r = 2; r <= 32; r += 1) {
   }
 }
 assert(vipStyled > 0, "VIPElite PJ has no fills to compare");
+await assertSafePackage(vipBuilt.buffer, "VIPElite");
 await writeFile(path.join(outDir, packOutputFilename(path.basename(vipPath), "NC")), Buffer.from(vipBuilt.buffer));
 console.log("vipelite", vipInfo.winningTiers, "jp", true);
+
+const qfcName = "260928_NC_QuestForCash(BuyBonus$25)_PPS_087.xlsx";
+const qfcBuf = await readFile(path.join(onedrive, "NC", "260928 Quest for Cash", qfcName));
+const qfcInfo = await inspectPack(qfcBuf, qfcName, "NC");
+assert(qfcInfo.buy && qfcInfo.rrp === 25 && !qfcInfo.hasJp, `QfC buy ${qfcInfo.buy} rrp ${qfcInfo.rrp}`);
+const qfcBuilt = await buildPack(qfcBuf, qfcName, { lottery: "NC" });
+const qfcD = (await loadBuilt(qfcBuilt.buffer)).getWorksheet("Delivery");
+assertPlainNumberFormats(qfcD, "QuestForCash buy");
+const qfcLast = 5 + qfcInfo.winningTiers;
+const qfcSummary = {
+  L6: "Base:", L7: "RRP(x):", L8: "Revenue:", L9: "Prize Fund:", L10: "RTP Setting:",
+  L11: "Base RTP:", L12: "Winning Tiers Freq:", L13: "Hit Rate:", L16: "Game info for NC",
+};
+for (const [addr, text] of Object.entries(qfcSummary)) {
+  assert(qfcD.getCell(addr).value === text, `QfC ${addr} ${qfcD.getCell(addr).value}`);
+}
+assert(qfcD.getCell("M7").value === 25, `QfC RRP ${qfcD.getCell("M7").value}`);
+assert(formulaOf(qfcD.getCell("M8")) === "=M5*M6*M7", `QfC revenue ${formulaOf(qfcD.getCell("M8"))}`);
+assert(formulaOf(qfcD.getCell("M11")) === `=G${qfcLast + 1}/M8`, `QfC base RTP ${formulaOf(qfcD.getCell("M11"))}`);
+assert(formulaOf(qfcD.getCell(`J${qfcLast}`)) === `=G${qfcLast}/M$9`, `QfC share ${formulaOf(qfcD.getCell(`J${qfcLast}`))}`);
+assert(String(qfcD.getCell("L28").value || "").includes("strictly confidential"), "QfC confidential at L28");
+await assertSafePackage(qfcBuilt.buffer, "QuestForCash buy");
+await writeFile(path.join(outDir, packOutputFilename(qfcName, "NC")), Buffer.from(qfcBuilt.buffer));
+console.log("quest for cash buy", qfcInfo.winningTiers, "rrp", qfcInfo.rrp);
 
 const libPath = path.join(onedrive, "GA", "260428_GA_LibertyLuck_PPS_078.xlsx");
 const libBuf = await readFile(libPath);
@@ -170,7 +242,7 @@ assert(libD.conditionalFormattings?.length || libD._conditionalFormattings?.leng
 await writeFile(path.join(outDir, packOutputFilename(path.basename(libPath), "GA")), Buffer.from(libBuilt.buffer));
 console.log("liberty", libInfo.winningTiers, "first prize", p4);
 
-const xmasPath = path.join(onedrive, "GA", "260917_GA_ChristmasCash(MMJ)_PPS_078_004.xlsx");
+const xmasPath = path.join(onedrive, "GA", "261009_GA_ChristmasCash(MMJ)_PPS_078_004.xlsx");
 const xmasBuf = await readFile(xmasPath);
 const xmasInfo = await inspectPack(xmasBuf, path.basename(xmasPath), "GA");
 assert(xmasInfo.hasJp, "ChristmasCash should be JP");
