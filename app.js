@@ -1,4 +1,4 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261021-1";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261021-2";
 import {
   buildPack,
   inspectPack,
@@ -6,7 +6,7 @@ import {
   packOutputFilename,
   DC_PRICE_OPTIONS,
   DC_DEFAULT_PRICE_POINTS,
-} from "./pack-builder.js?v=20261021-1";
+} from "./pack-builder.js?v=20261021-2";
 
 const $ = (id) => document.getElementById(id);
 

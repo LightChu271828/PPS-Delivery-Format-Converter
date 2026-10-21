@@ -1192,7 +1192,8 @@ function buildNcDelivery(ws, meta, source) {
   const fundCell = `M$${sum.fund}`;
 
   setColWidths(ws, NC_WIDTHS);
-  put(ws, "C1", `${meta.title} ${NC_TITLE_SUFFIX}`.trim(), { font: { ...FONT_NC_NOTE, bold: true } });
+  put(ws, "C1", `${meta.title} ${NC_TITLE_SUFFIX}`.trim(), { font: { ...FONT_NC_NOTE, size: 16, bold: true } });
+  ws.getRow(1).height = 22;
   const heads = [
     ["A", "TIER", "Number"],
     ["B", null, "Prize"],

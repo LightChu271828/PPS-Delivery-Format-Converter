@@ -83,6 +83,7 @@ assert(
   piggyD.getCell("C1").value === "Piggy Breaker Prize Structure for North Carolina Education Lottery",
   `Piggy title ${piggyD.getCell("C1").value}`,
 );
+assert(piggyD.getCell("C1").font?.name === "Aptos Narrow" && piggyD.getCell("C1").font?.size === 16 && piggyD.getCell("C1").font?.bold, `Piggy C1 font ${JSON.stringify(piggyD.getCell("C1").font)}`);
 const ncHeads = {
   A3: "TIER", A4: "Number", B4: "Prize", C4: "Win Method", D4: "Odds", E4: "Probability",
   F3: "Expected", F4: "Return", G3: "Prize", G4: "Cost", H4: "1 in X Odds",
