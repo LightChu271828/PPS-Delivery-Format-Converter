@@ -1,12 +1,15 @@
-import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261021-2";
+import { buildPps, inspectPps, outputFilename } from "./builder.js?v=20261028-1";
 import {
   buildPack,
   inspectPack,
   isPackLottery,
   packOutputFilename,
+  lnzSheetName,
   DC_PRICE_OPTIONS,
   DC_DEFAULT_PRICE_POINTS,
-} from "./pack-builder.js?v=20261021-2";
+  LNZ_PRICE_OPTIONS,
+  LNZ_DEFAULT_PRICE_POINTS,
+} from "./pack-builder.js?v=20261028-1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,6 +21,7 @@ const state = {
   output: null,
   outputName: null,
   lottery: "KY",
+  lnzPicked: false,
 };
 
 function toast(msg) {
@@ -50,6 +54,10 @@ function dcMode() {
   return state.lottery === "DC";
 }
 
+function lnzMode() {
+  return state.lottery === "LNZ";
+}
+
 function show(el, on) {
   el.classList.toggle("hidden", !on);
   el.hidden = !on;
@@ -63,7 +71,8 @@ function syncLotteryUi() {
   });
   show($("priceGrid"), !packMode());
   show($("dcPriceGrid"), dcMode());
-  $("buildBtn").textContent = packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
+  show($("lnzPriceGrid"), lnzMode());
+  $("buildBtn").textContent = lnzMode() ? "Add Delivery sheets" : packMode() ? "Add Delivery sheet" : "Add Delivery tabs";
   const kyTabs = $("kyResultTabs");
   const packTabs = $("packResultTabs");
   if (kyTabs) show(kyTabs, !packMode());
@@ -93,11 +102,13 @@ async function loadTemplates() {
 function canBuild() {
   if (!state.file || !state.inspect) return false;
   if (dcMode()) return selectedDcPrices().length > 0;
+  if (lnzMode()) return !state.inspect.unsupported && selectedLnzPrices().length > 0;
   return packMode() || Boolean(state.templates);
 }
 
 function setFile(file) {
   state.file = file;
+  state.lnzPicked = false;
   state.buffer = null;
   state.inspect = null;
   state.output = null;
@@ -120,11 +131,16 @@ async function inspectSelected() {
     state.inspect = packMode()
       ? await inspectPack(state.buffer, state.file.name, state.lottery)
       : await inspectPps(state.buffer, state.file.name);
+    if (lnzMode()) defaultLnzPrices(state.inspect.base);
     renderInspect(state.inspect);
     $("buildBtn").disabled = !canBuild();
-    $("statusHint").textContent = packMode()
-      ? `Looks readable. Add the ${state.lottery} Delivery sheet, then download.`
-      : "Looks readable. Add Delivery tabs, then download.";
+    $("statusHint").textContent = state.inspect.unsupported
+      ? state.inspect.unsupported
+      : lnzMode()
+        ? "Looks readable. Add the LNZ Delivery sheets, then download."
+        : packMode()
+          ? `Looks readable. Add the ${state.lottery} Delivery sheet, then download.`
+          : "Looks readable. Add Delivery tabs, then download.";
   } catch (err) {
     $("inspectBlock").classList.remove("hidden");
     $("inspectBlock").hidden = false;
@@ -153,7 +169,17 @@ function renderInspect(info) {
     bits.push(`Ticket <b>$${info.base}</b>, pool <b>${fmt(info.quantity, 0)}</b>.`);
     if (info.buy) bits.push(`RRP <b>${info.rrp}x</b>.`);
     if (info.layout === "GA") bits.push("Winning tiers sort by prize, smallest first.");
+    else if (info.layout === "LNZ") bits.push("Winning tiers sort by prize, largest first.");
     else bits.push("Winning tiers keep Frequency order.");
+    if (info.layout === "LNZ") {
+      const prices = selectedLnzPrices();
+      bits.push(
+        prices.length
+          ? `Sheets: <b>${prices.map((p) => lnzSheetName(p)).join(", ")}</b>.`
+          : "Pick at least one price point.",
+      );
+      if (!info.payEntries) bits.push("No Pay Table entries found, so the prize list above the table is left empty.");
+    }
     if (info.layout === "VA" && info.sideHits?.length) {
       bits.push(`Side-bet hit rates: <b>${info.sideHits.length}</b>.`);
     }
@@ -171,7 +197,8 @@ function renderInspect(info) {
     if (info.zeroFrequency?.length) {
       bits.push(`Skipped ${info.zeroFrequency.length} Frequency row(s) with 0 Odds up.`);
     }
-    $("inspectNote").className = "note";
+    if (info.unsupported) bits.push(`<b>${info.unsupported}</b>`);
+    $("inspectNote").className = info.unsupported ? "note bad" : "note";
     $("inspectNote").innerHTML = bits.join(" ");
     return;
   }
@@ -210,6 +237,7 @@ function renderResult(report) {
   if (packMode()) {
     $("resultStats").innerHTML = [
       stat(report.layout, "Written as"),
+      ...(report.layout === "LNZ" ? [stat(report.deliverySheets.length, "Delivery sheets")] : []),
       stat(report.winningTiers, "Delivery win rows"),
       stat(report.uniquePrizes, "Prize groups"),
       stat(fmt(report.wins, 0), "Wins"),
@@ -237,7 +265,7 @@ async function build() {
     if (packMode()) {
       const { buffer, report } = await buildPack(state.buffer, state.file.name, {
         lottery: state.lottery,
-        pricePoints: dcMode() ? selectedDcPrices() : undefined,
+        pricePoints: dcMode() ? selectedDcPrices() : lnzMode() ? selectedLnzPrices() : undefined,
       });
       state.output = buffer;
       state.outputName = packOutputFilename(state.file.name, state.lottery);
@@ -245,7 +273,7 @@ async function build() {
       $("downloadBtn").disabled = false;
       $("downloadBtn").classList.add("ready");
       $("statusHint").textContent = `Ready: ${state.outputName}`;
-      toast("Delivery sheet added");
+      toast(lnzMode() ? "Delivery sheets added" : "Delivery sheet added");
     } else {
       const { buffer, report } = await buildPps(state.buffer, state.file.name, {
         templates: state.templates,
@@ -295,6 +323,8 @@ function resetPriceGrid() {
   document.querySelectorAll("#dcPriceOptions input[type=checkbox]").forEach((el) => {
     el.checked = DC_DEFAULT_PRICE_POINTS.includes(Number(el.value));
   });
+  setLnzPrices(LNZ_DEFAULT_PRICE_POINTS);
+  state.lnzPicked = false;
 }
 
 function renderDcPriceOptions() {
@@ -308,6 +338,30 @@ function selectedDcPrices() {
   return [...document.querySelectorAll("#dcPriceOptions input[type=checkbox]:checked")]
     .map((el) => Number(el.value))
     .sort((a, b) => a - b);
+}
+
+function renderLnzPriceOptions() {
+  $("lnzPriceOptions").innerHTML = LNZ_PRICE_OPTIONS.map(
+    (p) =>
+      `<label><input type="checkbox" value="${p}"${LNZ_DEFAULT_PRICE_POINTS.includes(p) ? " checked" : ""}> ${p}</label>`,
+  ).join("");
+}
+
+function selectedLnzPrices() {
+  return [...document.querySelectorAll("#lnzPriceOptions input[type=checkbox]:checked")]
+    .map((el) => Number(el.value))
+    .sort((a, b) => a - b);
+}
+
+function setLnzPrices(prices) {
+  document.querySelectorAll("#lnzPriceOptions input[type=checkbox]").forEach((el) => {
+    el.checked = prices.includes(Number(el.value));
+  });
+}
+
+function defaultLnzPrices(base) {
+  if (state.lnzPicked) return;
+  setLnzPrices(LNZ_PRICE_OPTIONS.includes(base) ? [base] : LNZ_DEFAULT_PRICE_POINTS);
 }
 
 function reset() {
@@ -371,6 +425,11 @@ $("dcPriceOptions").addEventListener("change", () => {
   if (state.inspect && dcMode()) renderInspect(state.inspect);
   $("buildBtn").disabled = !canBuild();
 });
+$("lnzPriceOptions").addEventListener("change", () => {
+  state.lnzPicked = true;
+  if (state.inspect && lnzMode()) renderInspect(state.inspect);
+  $("buildBtn").disabled = !canBuild();
+});
 document.querySelector(".markets").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-lottery]");
   if (!btn || btn.disabled) return;
@@ -378,6 +437,7 @@ document.querySelector(".markets").addEventListener("click", (e) => {
 });
 
 renderDcPriceOptions();
+renderLnzPriceOptions();
 syncLotteryUi();
 loadTemplates()
   .then(() => {

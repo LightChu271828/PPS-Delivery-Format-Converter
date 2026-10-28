@@ -17,6 +17,7 @@ const {
   assertPlainNumberFormats,
   isPackLottery,
   readZipText,
+  lnzSheetName,
 } = await import("./pack-builder.js");
 
 function assert(cond, msg) {
@@ -36,7 +37,7 @@ const outDir = path.join(root, "test-out");
 await mkdir(outDir, { recursive: true });
 
 assert(
-  ["NC", "ga", "PA", "NH", "VA", "DC"].every((id) => isPackLottery(id)),
+  ["NC", "ga", "PA", "NH", "VA", "DC", "LNZ"].every((id) => isPackLottery(id)),
   "pack lottery ids",
 );
 assert(!isPackLottery("KY"), "KY is not a pack lottery");
@@ -541,4 +542,90 @@ for (let i = 1; i <= 12; i += 1) {
   const xml = await readZipText(xmasBuilt.buffer, `xl/worksheets/sheet${i}.xml`);
   if (xml) assert(!xml.includes("[1]"), `sheet${i} has a broken [1] sheet reference`);
 }
+
+const cached = (cell) => {
+  const v = cell.value;
+  return v && typeof v === "object" && "result" in v ? v.result : v;
+};
+
+function payList(ws) {
+  const map = new Map();
+  for (let r = 3; r <= 18; r += 1) {
+    for (let c = 6; c <= 20; c += 1) {
+      const name = cached(ws.getCell(r, c));
+      const value = cached(ws.getCell(r, c + 1));
+      if (typeof name === "string" && /-\d+$/.test(name) && typeof value === "number") map.set(name.toLowerCase(), value);
+    }
+  }
+  return map;
+}
+
+function sidePrizes(ws) {
+  const list = [];
+  for (let r = 21; typeof cached(ws.getCell(`N${r}`)) === "number"; r += 1) list.push(cached(ws.getCell(`N${r}`)));
+  return list;
+}
+
+const lnzCases = [
+  ["260708_LNZ_ShowMuchFun_PPS_062.xlsx", [1, 2, 3], "Show Much Fun"],
+  ["260706_LNZ_CashClash_PPS_062.xlsx", [1, 2, 5], "Cash Explosion"],
+  ["260128_LNZ_LabRichesV2($3.0)_PPS_062.xlsx", [3], "Lab Riches($3.0)"],
+];
+for (const [name, prices, title] of lnzCases) {
+  const buf = await readFile(path.join(onedrive, "LNZ", name));
+  const info = await inspectPack(buf, name, "LNZ");
+  assert(info.layout === "LNZ" && !info.unsupported, `${name} inspect ${info.unsupported}`);
+  assert(info.existingDelivery.length > 0, `${name} existing Delivery sheets`);
+  const built = await buildPack(buf, name, { lottery: "LNZ", pricePoints: prices });
+  const names = prices.map(lnzSheetName);
+  assert(built.report.deliverySheets.join() === names.join(), `${name} sheets ${built.report.deliverySheets}`);
+  const out = await loadBuilt(built.buffer);
+  const order = out.worksheets.map((w) => w.name);
+  assert(order.slice(0, names.length + 1).join() === ["Frequency", ...names].join(), `${name} order ${order}`);
+  assert(order.filter((n) => /^delivery/i.test(n)).length === names.length, `${name} old Delivery sheets left: ${order}`);
+  const src = await loadBuilt(buf);
+  for (const s of built.report.delivery.sheets) {
+    const ws = out.getWorksheet(s.name);
+    const ref = src.worksheets.find((w) => /^delivery/i.test(w.name) && Number(cached(w.getCell("C3"))) === s.price);
+    assert(ref, `${name} has no sample sheet for $${s.price}`);
+    assert(s.last - s.first + 1 === info.winningTiers, `${s.name} tier rows`);
+    for (let r = s.first; r <= s.last; r += 1) {
+      for (const col of ["A", "B", "E", "F"]) {
+        const a = cached(ws.getCell(`${col}${r}`));
+        const b = cached(ref.getCell(`${col}${r}`));
+        assert(String(a) === String(b), `${name} ${s.name} ${col}${r} ${a} vs ${b}`);
+      }
+    }
+    for (const addr of ["C3", "C4", "C6", "C8", "C9", "C10"]) {
+      assert(cached(ws.getCell(addr)) === cached(ref.getCell(addr)), `${name} ${s.name} ${addr}`);
+    }
+    const sideRef = sidePrizes(ref);
+    if (sideRef.length) assert(sidePrizes(ws).join() === sideRef.join(), `${name} ${s.name} side prizes`);
+    const payOut = payList(ws);
+    const payRef = payList(ref);
+    assert(payOut.size === payRef.size, `${name} ${s.name} pay list ${payOut.size} vs ${payRef.size}`);
+    for (const [k, v] of payRef) assert(payOut.get(k) === v, `${name} ${s.name} pay ${k} ${payOut.get(k)} vs ${v}`);
+    const t = s.tot;
+    const f = (addr) => formulaOf(ws.getCell(addr));
+    assert(f("A1") === `="${title}. Payout "&TEXT(100*C5,"###.00")&"%. Odds 1 in "&TEXT(D${t},"###.00")`, `${s.name} A1 ${f("A1")}`);
+    assert(f("C5") === `=(G${t}/C6/C3)*C4` && f("C7") === `=C6-E${t}`, `${s.name} C5/C7`);
+    assert(f(`E${t + 1}`) === `=SUMIF(F22:F${s.last},C$3,E22:E${s.last})/E${t}`, `${s.name} break even ${f(`E${t + 1}`)}`);
+    assert(f("O21") === `=SUMIF($F$22:$F$${s.last},N21,$E$22:$E$${s.last})`, `${s.name} O21 ${f("O21")}`);
+    assert(f("L22") === "=IF(F22<C$9,\"\",H22)", `${s.name} L22 ${f("L22")}`);
+    assert(ws.getCell(`G${t + 5}`).value == null, `${s.name} scratch cells below the total`);
+    assertPlainNumberFormats(ws, `${name} ${s.name}`);
+  }
+  await assertSafePackage(built.buffer, `LNZ ${name}`);
+  await writeFile(path.join(outDir, packOutputFilename(name, "LNZ")), Buffer.from(built.buffer));
+  console.log("lnz", name, info.winningTiers, names.join(" "));
+}
+const lnzJp = await inspectPack(vipBuf, path.basename(vipPath), "LNZ");
+assert(/jackpot/i.test(lnzJp.unsupported || ""), "LNZ flags jackpot games");
+let lnzJpThrew = false;
+try {
+  await buildPack(vipBuf, path.basename(vipPath), { lottery: "LNZ", pricePoints: [1] });
+} catch {
+  lnzJpThrew = true;
+}
+assert(lnzJpThrew, "LNZ refuses jackpot games");
 console.log("pack ok");

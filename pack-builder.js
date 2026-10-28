@@ -3,7 +3,8 @@
  * Ports .cursor/skills/pps-delivery-conversion. One Delivery sheet, not KY four-tab.
  * PA and NH use the Georgia layout. NC is the A:J prize structure table with the summary
  * in L:M. DC keeps the earlier B:I table with the summary in K:L; VA puts that summary
- * above the tier table. Number formats are plain: no _ or * padding.
+ * above the tier table. LNZ writes one Delivery($price) sheet per price point, prizes
+ * largest first. Number formats are plain: no _ or * padding.
  */
 
 const ExcelJS = globalThis.ExcelJS;
@@ -17,10 +18,13 @@ export const PACK_LOTTERIES = {
   NH: { code: "NH", layout: "GA", name: "New Hampshire Lottery" },
   VA: { code: "VA", layout: "VA", name: "Virginia Lottery" },
   DC: { code: "DC", layout: "DC", name: "DC Lottery" },
+  LNZ: { code: "LNZ", layout: "LNZ", name: "Lotto New Zealand" },
 };
 
 export const DC_PRICE_OPTIONS = [0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 10, 20, 30, 50];
 export const DC_DEFAULT_PRICE_POINTS = [0.5, 1, 2, 3, 5, 10, 20, 30, 50];
+export const LNZ_PRICE_OPTIONS = [0.5, 1, 2, 3, 4, 5, 10, 20];
+export const LNZ_DEFAULT_PRICE_POINTS = [1];
 
 export const PACK_SHEET = "Delivery";
 
@@ -371,10 +375,11 @@ function applyConfidential(ws, range, fontName, size = 8) {
   cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 }
 
-function orderPackSheets(wb, layout) {
+function orderPackSheets(wb, layout, deliveryNames = [PACK_SHEET]) {
   const byName = Object.fromEntries(wb.worksheets.map((ws) => [ws.name, ws]));
-  const names =
-    layout === "VA" || layout === "DC" ? ["Frequency", PACK_SHEET] : ["Frequency", "Progressive Jackpots", PACK_SHEET];
+  const names = ["VA", "DC", "LNZ"].includes(layout)
+    ? ["Frequency", ...deliveryNames]
+    : ["Frequency", "Progressive Jackpots", ...deliveryNames];
   const head = names.map((n) => byName[n]).filter(Boolean);
   const skip = new Set(head);
   const tail = wb.worksheets.filter((ws) => !skip.has(ws));
@@ -1669,6 +1674,241 @@ function buildGaDelivery(ws, freq, meta, source, dateSerial) {
   return { last, tot, sorted: rows, left };
 }
 
+const LNZ_FIRST = 22;
+const LNZ_PAY_ROWS = 13;
+const LNZ_TIER_PRIZES = [
+  [8, "Low Tier Prize", 15],
+  [9, "Mid Tier Prize", 599],
+  [10, "High Tier Prize", 600],
+];
+const LNZ_WIDTHS = {
+  1: 8.55,
+  2: 47.22,
+  3: 16.55,
+  4: 13.33,
+  5: 13.11,
+  6: 16.33,
+  7: 15.55,
+  8: 14.44,
+  9: 13.33,
+  10: 12.66,
+  11: 12.11,
+  12: 12.44,
+  13: 9.22,
+  14: 12.66,
+  15: 9.22,
+  16: 10.33,
+  17: 9.22,
+};
+const LNZ_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FF5468A9" } };
+const FONT_LNZ = { name: "Arial", size: 8 };
+const FONT_LNZ_B = { name: "Arial", size: 8, bold: true };
+const FONT_LNZ_HEAD = { name: "Arial", size: 8, bold: true, color: { theme: 0 } };
+const FONT_LNZ_INPUT = { name: "Arial", size: 8, bold: true, color: { argb: "FFFF0000" } };
+const FONT_LNZ_ODDS = { name: "Arial", size: 8, bold: true, color: { argb: "FFDD0018" } };
+const FONT_LNZ_TIER = { name: "Arial", size: 8, bold: true, color: { argb: "FF5468A9" } };
+const FONT_LNZ_SIDE = { name: "Geneva", size: 10 };
+const FMT_LNZ_PROB = "#,##0.00000";
+const FMT_PCT4 = "0.0000%";
+const FMT_PCT5 = "0.00000%";
+const LNZ_DELIVERY_NAME = /^delivery\s*(\(\s*\$?\s*[\d.]+\s*\))?$/i;
+
+function medium(sides) {
+  return Object.fromEntries(sides.map((side) => [side, { ...MEDIUM_EDGE }]));
+}
+
+export function lnzSheetName(price) {
+  return `Delivery($${cleanFloat(price)})`;
+}
+
+export function sortLnzWinning(rows) {
+  return [...rows].sort((a, b) => b.prize - a.prize || a.sourceRow - b.sourceRow);
+}
+
+function lnzPrices(pricePoints) {
+  const list = (pricePoints?.length ? pricePoints : LNZ_DEFAULT_PRICE_POINTS).map(Number);
+  return [...new Set(list.filter((p) => Number.isFinite(p) && p > 0))].sort((a, b) => a - b);
+}
+
+function lnzDeliverySheets(wb) {
+  return wb.worksheets.filter((ws) => LNZ_DELIVERY_NAME.test(ws.name.trim()));
+}
+
+function lnzUnsupported(meta) {
+  if (meta.hasJp) return "LNZ Delivery does not cover jackpot games yet.";
+  if (meta.buy) return "LNZ Delivery does not cover buy-feature games yet.";
+  return null;
+}
+
+function readLnzPayTable(pt) {
+  if (!pt) return [];
+  const entries = [];
+  const max = Math.min(pt.rowCount || 0, 400);
+  for (let row = 1; row <= max; row += 1) {
+    const name = cellResult(pt.getCell(row, 2));
+    const value = cellResult(pt.getCell(row, 3));
+    if (typeof name !== "string" || !name.trim() || !isNumeric(value)) continue;
+    entries.push({ name, value, fill: captureFill(pt.getCell(row, 2))?.fill || null });
+  }
+  return entries;
+}
+
+function writeLnzPayList(ws, pay, price) {
+  pay.forEach((entry, idx) => {
+    const block = Math.floor(idx / LNZ_PAY_ROWS);
+    const row = 3 + (idx % LNZ_PAY_ROWS);
+    const col = 6 + block * 2;
+    const blockEnd = Math.min(pay.length, (block + 1) * LNZ_PAY_ROWS) - 1;
+    const edges = [...(row === 3 ? ["top"] : []), ...(idx === blockEnd ? ["bottom"] : [])];
+    put(ws, { row, col }, entry.name, {
+      font: FONT_LNZ,
+      alignment: CENTER,
+      border: medium(["left", ...edges]),
+      ...(entry.fill ? { fill: entry.fill } : {}),
+    });
+    put(ws, { row, col: col + 1 }, cleanFloat(entry.value * price), {
+      font: FONT_LNZ_INPUT,
+      numFmt: FMT_MONEY,
+      alignment: RIGHT,
+      border: medium(["right", ...edges]),
+    });
+  });
+}
+
+function buildLnzDelivery(ws, meta, rows, pay, price) {
+  const last = LNZ_FIRST + rows.length - 1;
+  const tot = last + 1;
+  const scale = price / meta.base;
+  const prizeOf = (item) => cleanFloat(item.prize * scale);
+  setColWidths(ws, LNZ_WIDTHS);
+
+  const title = String(meta.title || "Delivery").replaceAll('"', '""');
+  put(ws, "A1", `="${title}. Payout "&TEXT(100*C5,"###.00")&"%. Odds 1 in "&TEXT(D${tot},"###.00")`, {
+    font: { name: "Arial", size: 11, bold: true },
+  });
+
+  const inputs = [
+    [3, "Price per Play Card", price, FMT_MONEY, true],
+    [4, "Number of Boards per Play Card", 1, FMT_INT, true],
+    [5, "Prize Payout", `=(G${tot}/C6/C3)*C4`, FMT_PCT, false],
+    [6, "Number of Grid Spots", meta.pool, FMT_INT, true],
+    [7, "Number of Nonwinning Play Cards", `=C6-E${tot}`, FMT_INT, false],
+    ...LNZ_TIER_PRIZES.map(([row, label, value]) => [row, label, value, FMT_MONEY, true]),
+  ];
+  for (const [row, label, value, numFmt, input] of inputs) {
+    const edges = [...(row === 3 ? ["top"] : []), ...(row === 7 || row === 10 ? ["bottom"] : [])];
+    put(ws, `A${row}`, label, { font: FONT_LNZ_HEAD, fill: LNZ_FILL, border: medium(["left", ...edges]) });
+    put(ws, `B${row}`, undefined, { font: FONT_LNZ_HEAD, fill: LNZ_FILL, border: medium(edges) });
+    put(ws, `C${row}`, value, { font: input ? FONT_LNZ_INPUT : FONT_LNZ, numFmt, border: medium(["right", ...edges]) });
+  }
+  writeLnzPayList(ws, pay, price);
+  applyConfidential(ws, "A13:D17", "Helv", 8);
+
+  const heads = [
+    ["A", "Division", null],
+    ["B", "Method", null],
+    ["C", "Probability", "per Board"],
+    ["D", "Odds", "per Grid"],
+    ["E", "Expected Number", "of Winners / Grid"],
+    ["F", "Prize", "per Winner"],
+    ["G", "Total", "Prize"],
+    ["H", "Prize", "Percentage"],
+    ["I", "Payout", "Percentage"],
+    ["J", "Percent", "Low Tiers"],
+    ["K", "Percent", "Mid Tiers"],
+    ["L", "Percent", "High Tiers"],
+  ];
+  heads.forEach(([col, upper, lower], idx) => {
+    const sides = idx === 0 ? ["left"] : idx === heads.length - 1 ? ["right"] : [];
+    const style = { font: FONT_LNZ_HEAD, fill: LNZ_FILL, alignment: idx === 0 ? { ...CENTER, wrapText: true } : CENTER };
+    put(ws, `${col}20`, upper, { ...style, border: medium(["top", ...sides]) });
+    put(ws, `${col}21`, lower ?? undefined, { ...style, border: medium(sides) });
+  });
+
+  rows.forEach((item, idx) => {
+    const r = LNZ_FIRST + idx;
+    put(ws, `A${r}`, idx + 1, { font: FONT_LNZ, alignment: CENTER, border: medium(["left"]) });
+    applyMethodFill(put(ws, `B${r}`, item.method, { alignment: CENTER }), item.fill, FONT_HELV10);
+    put(ws, `C${r}`, `=1/D${r}`, { font: FONT_LNZ, numFmt: FMT_LNZ_PROB });
+    put(ws, `D${r}`, `=C$6/E${r}`, { font: FONT_LNZ, numFmt: FMT_MONEY });
+    put(ws, `E${r}`, item.winners, { font: FONT_LNZ_ODDS, numFmt: FMT_INT });
+    put(ws, `F${r}`, prizeOf(item), { font: FONT_LNZ_B, numFmt: FMT_MONEY });
+    put(ws, `G${r}`, `=IF(E${r}>0,F${r}*E${r},"")`, { font: FONT_LNZ, numFmt: FMT_MONEY });
+    put(ws, `H${r}`, `=IF(E${r}>0,G${r}/G$${tot},"")`, { font: FONT_LNZ, numFmt: FMT_PCT, alignment: RIGHT });
+    put(ws, `I${r}`, `=IF(E${r}>0,H${r}*C$5,"")`, { font: FONT_LNZ, numFmt: FMT_PCT4, alignment: RIGHT });
+    put(ws, `J${r}`, `=IF(F${r}>C$8,"",H${r})`, { font: FONT_LNZ_TIER, numFmt: FMT_PCT });
+    put(ws, `K${r}`, `=IF(AND(F${r}<C$9,F${r}>C$8),H${r},"")`, { font: FONT_LNZ_TIER, numFmt: FMT_PCT });
+    put(ws, `L${r}`, `=IF(F${r}<C$9,"",H${r})`, { font: FONT_LNZ_TIER, numFmt: FMT_PCT, border: medium(["right"]) });
+  });
+
+  const sumOf = (col) => `=SUM(${col}${LNZ_FIRST}:${col}${last})`;
+  const totals = [
+    ["A", undefined, null, ["left"]],
+    ["B", undefined, null],
+    ["C", sumOf("C"), FMT_LNZ_PROB],
+    ["D", `=1/C${tot}`, FMT_MONEY, [], CENTER],
+    ["E", sumOf("E"), FMT_INT, [], CENTER],
+    ["F", undefined, null],
+    ["G", sumOf("G"), FMT_MONEY, [], CENTER],
+    ["H", sumOf("H"), FMT_PCT],
+    ["I", sumOf("I"), FMT_PCT4],
+    ["J", sumOf("J"), FMT_PCT],
+    ["K", sumOf("K"), FMT_PCT],
+    ["L", sumOf("L"), FMT_PCT, ["right"]],
+  ];
+  for (const [col, value, numFmt, sides = [], alignment] of totals) {
+    put(ws, `${col}${tot}`, value, {
+      font: FONT_LNZ_HEAD,
+      fill: LNZ_FILL,
+      border: medium(["bottom", ...sides]),
+      ...(numFmt ? { numFmt } : {}),
+      ...(alignment ? { alignment } : {}),
+    });
+  }
+  const span = (col) => `${col}${LNZ_FIRST}:${col}${last}`;
+  put(ws, `E${tot + 1}`, `=SUMIF(${span("F")},C$3,${span("E")})/E${tot}`, {
+    font: FONT_LNZ,
+    numFmt: FMT_PCT,
+    alignment: RIGHT,
+  });
+  put(ws, `F${tot + 1}`, "Break even %", { font: FONT_LNZ, alignment: LEFT });
+
+  const prizes = [...new Set(rows.map(prizeOf))].sort((a, b) => b - a);
+  const sideHead = { font: { ...FONT_LNZ_SIDE, bold: true }, border: medium(["bottom"]) };
+  put(ws, "N20", "Prize", sideHead);
+  put(ws, "O20", "Odds up", sideHead);
+  put(ws, "P20", "Percentage", sideHead);
+  const fAbs = `$F$${LNZ_FIRST}:$F$${last}`;
+  const eAbs = `$E$${LNZ_FIRST}:$E$${last}`;
+  const sideEnd = 20 + prizes.length;
+  prizes.forEach((prize, idx) => {
+    const r = 21 + idx;
+    const edge = r === sideEnd ? { border: medium(["bottom"]) } : {};
+    put(ws, `N${r}`, prize, { font: { ...FONT_LNZ_SIDE, bold: true, italic: true }, numFmt: FMT_MONEY, ...edge });
+    put(ws, `O${r}`, `=SUMIF(${fAbs},N${r},${eAbs})`, { font: FONT_LNZ_SIDE, numFmt: FMT_INT, ...edge });
+    put(ws, `P${r}`, `=O${r}/$E$${tot}`, { font: FONT_LNZ_SIDE, numFmt: FMT_PCT5, ...edge });
+  });
+  put(ws, `O${sideEnd + 1}`, `=SUM(O21:O${sideEnd})`, { font: FONT_LNZ_SIDE, numFmt: FMT_INT });
+  put(ws, `P${sideEnd + 1}`, `=SUM(P21:P${sideEnd})`, { font: FONT_LNZ_SIDE, numFmt: FMT_PCT });
+
+  applyTabColor(ws);
+  return { name: ws.name, price, first: LNZ_FIRST, last, tot, sideEnd, prizeGroups: prizes.length };
+}
+
+function buildLnzDeliveries(wb, meta, source, pricePoints) {
+  const reason = lnzUnsupported(meta);
+  if (reason) throw new Error(reason);
+  const prices = lnzPrices(pricePoints);
+  if (!prices.length) throw new Error("Pick at least one LNZ price point.");
+  const old = lnzDeliverySheets(wb);
+  const replaced = old.map((ws) => ws.name);
+  for (const ws of old) wb.removeWorksheet(ws.id);
+  const rows = sortLnzWinning(source.rows);
+  const pay = readLnzPayTable(sheet(wb, "Pay Table"));
+  const sheets = prices.map((price) => buildLnzDelivery(wb.addWorksheet(lnzSheetName(price)), meta, rows, pay, price));
+  return { sheets, replaced, pricePoints: prices, payEntries: pay.length };
+}
+
 function independentStats(rows, meta) {
   const wins = rows.reduce((s, r) => s + r.winners, 0);
   const fund = rows.reduce((s, r) => s + r.prize * r.winners, 0);
@@ -1686,6 +1926,7 @@ export async function inspectPack(buffer, filename = "upload.xlsx", lottery = "N
   assertPool(meta);
   const source = frequencyWinningRows(freq);
   const stats = independentStats(source.rows, meta);
+  const lnz = spec.layout === "LNZ";
   return {
     filename,
     lottery: code,
@@ -1707,10 +1948,12 @@ export async function inspectPack(buffer, filename = "upload.xlsx", lottery = "N
     prizeFund: stats.fund,
     actualRtp: stats.actualRtp,
     sheets: wb.worksheets.map((ws) => ws.name),
-    existingDelivery: sheet(wb, PACK_SHEET) ? [PACK_SHEET] : [],
+    existingDelivery: lnz ? lnzDeliverySheets(wb).map((ws) => ws.name) : sheet(wb, PACK_SHEET) ? [PACK_SHEET] : [],
     jpCount: meta.hasJp ? 1 : 0,
     jpNames: meta.hasJp ? ["Progressive Jackpots"] : [],
     sideHits: meta.hits.map((h) => h.label),
+    unsupported: lnz ? lnzUnsupported(meta) : null,
+    payEntries: lnz ? readLnzPayTable(sheet(wb, "Pay Table")).length : null,
   };
 }
 
@@ -1724,6 +1967,50 @@ export async function buildPack(buffer, filename, options = {}) {
   const meta = resolveJackpot(wb, spec, lookupMeta(freq, code));
   assertPool(meta);
   const source = frequencyWinningRows(freq);
+  let built;
+  let deliveryNames = [PACK_SHEET];
+  if (spec.layout === "LNZ") {
+    built = buildLnzDeliveries(wb, meta, source, options.pricePoints);
+    deliveryNames = built.sheets.map((s) => s.name);
+  } else {
+    built = buildSingleDelivery(wb, spec, meta, freq, source, filename, options);
+  }
+  orderPackSheets(wb, spec.layout, deliveryNames);
+  disableFullCalcOnLoad(wb);
+  const stats = independentStats(source.rows, meta);
+  const rawBuffer = await wb.xlsx.writeBuffer();
+  const outBuffer = await patchPackXlsx(rawBuffer);
+  return {
+    buffer: outBuffer,
+    report: {
+      filename,
+      lottery: code,
+      layout: spec.layout,
+      schema: spec.layout,
+      identity: `${meta.jurisdiction} ${meta.title}`.trim(),
+      jurisdiction: meta.jurisdiction,
+      title: meta.title,
+      buy: meta.buy,
+      rrp: meta.rrp,
+      hasJp: meta.hasJp,
+      quantity: meta.pool,
+      base: meta.base,
+      rtp: meta.rtp,
+      winningTiers: source.rows.length,
+      uniquePrizes: new Set(source.rows.map((r) => r.prize)).size,
+      zeroFrequency: source.zeroFrequency,
+      wins: stats.wins,
+      hitRate: stats.hitRate,
+      prizeFund: stats.fund,
+      actualRtp: stats.actualRtp,
+      delivery: built,
+      deliverySheets: deliveryNames,
+      sheets: wb.worksheets.map((ws2) => ws2.name),
+    },
+  };
+}
+
+function buildSingleDelivery(wb, spec, meta, freq, source, filename, options) {
   const ws = insertSheet(wb, PACK_SHEET);
   let built;
   if (spec.layout === "NC") built = buildNcDelivery(ws, meta, source);
@@ -1761,38 +2048,7 @@ export async function buildPack(buffer, filename, options = {}) {
     }
   }
   applyTabColor(ws);
-  orderPackSheets(wb, spec.layout);
-  disableFullCalcOnLoad(wb);
-  const stats = independentStats(source.rows, meta);
-  const rawBuffer = await wb.xlsx.writeBuffer();
-  const outBuffer = await patchPackXlsx(rawBuffer);
-  return {
-    buffer: outBuffer,
-    report: {
-      filename,
-      lottery: code,
-      layout: spec.layout,
-      schema: spec.layout,
-      identity: `${meta.jurisdiction} ${meta.title}`.trim(),
-      jurisdiction: meta.jurisdiction,
-      title: meta.title,
-      buy: meta.buy,
-      rrp: meta.rrp,
-      hasJp: meta.hasJp,
-      quantity: meta.pool,
-      base: meta.base,
-      rtp: meta.rtp,
-      winningTiers: source.rows.length,
-      uniquePrizes: new Set(source.rows.map((r) => r.prize)).size,
-      zeroFrequency: source.zeroFrequency,
-      wins: stats.wins,
-      hitRate: stats.hitRate,
-      prizeFund: stats.fund,
-      actualRtp: stats.actualRtp,
-      delivery: built,
-      sheets: wb.worksheets.map((ws2) => ws2.name),
-    },
-  };
+  return built;
 }
 
 export function assertPlainNumberFormats(ws, label = "Delivery") {

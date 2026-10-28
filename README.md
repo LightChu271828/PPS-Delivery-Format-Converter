@@ -7,7 +7,7 @@ server.
 **Live:** https://lightchu271828.github.io/PPS-Delivery-Format-Converter/
 
 Pick the lottery first. Kentucky is a four-tab pack. NC, VA, DC, GA, PA, and NH add one Delivery
-sheet. Every source tab stays in the workbook.
+sheet. LNZ adds one Delivery sheet per price point. Every source tab stays in the workbook.
 
 ## Kentucky
 
@@ -56,6 +56,25 @@ it. Non-jackpot games have no JP rows. Output name:
 Number formats are plain `#,##0`, `#,##0.00`, and `0.00%`. Accounting padding is stripped.
 
 Buy-feature packs are still one workbook per game for now.
+
+## LNZ
+
+Pick the price points (the Frequency base is ticked when the file is read). Each one gets a
+`Delivery($price)` sheet, placed after Frequency. Existing `Delivery`, `Delivery($n)`, and
+`Delivery ($n)` sheets are replaced.
+
+- A1 is the title formula: Frequency title, payout, and odds.
+- A3:C10 holds the inputs: price, boards, payout, grid spots, non-winning cards, and the low / mid /
+  high tier prizes `15 / 599 / 600`. Low is a prize up to C8, mid is between C8 and C9, and high is
+  C9 or more.
+- The Pay Table prizes times the price sit from F3, 13 rows per column pair. The confidentiality
+  notice is in A13:D17.
+- The tier table starts on row 22 with prizes largest first; equal prizes keep Frequency order.
+  Prize is the Frequency prize divided by base, times the price. The total row follows, then
+  `Break even %`, the share of winners whose prize equals the price.
+- N20:P lists each prize with its winners and share of winners.
+
+Jackpot and buy-feature games are not covered yet; the page says so and does not build.
 
 ## What you need in the file
 
